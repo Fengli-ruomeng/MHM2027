@@ -126,7 +126,7 @@ public final class PanelService {
         WATCHERS.clear();
     }
 
-    private static void sendSnapshot(ServerPlayer player) {
+    static void sendSnapshot(ServerPlayer player) {
         PacketDistributor.sendToPlayer(player, snapshot(player));
     }
 

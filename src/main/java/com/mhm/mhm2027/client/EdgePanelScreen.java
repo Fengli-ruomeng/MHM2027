@@ -255,6 +255,8 @@ public class EdgePanelScreen extends Screen {
                 if (!script.preset()) {
                     button(g, right - 76, y, 38, Component.translatable("mhm2027.panel.burn"), true, hover,
                             () -> send(PanelRequest.Action.BURN, script.id()));
+                    button(g, right - 112, y, 34, Component.translatable("mhm2027.panel.edit"), true, hover,
+                            () -> minecraft.setScreen(new CodeEditorScreen(script.id())));
                 }
             });
         }
@@ -265,9 +267,11 @@ public class EdgePanelScreen extends Screen {
         int buttonsY = contentBottom - BUTTON_HEIGHT;
         button(graphics, x, buttonsY, 60, Component.translatable("mhm2027.panel.reboot"), !rebooting, mouseOver(mouseX, mouseY),
                 () -> send(PanelRequest.Action.REBOOT, ""));
+        button(graphics, x + 64, buttonsY, 74, Component.translatable("mhm2027.panel.code_editor"), true, mouseOver(mouseX, mouseY),
+                () -> minecraft.setScreen(new CodeEditorScreen(null)));
         Path folder = localFolder();
         if (folder != null) {
-            button(graphics, x + 64, buttonsY, 80, Component.translatable("mhm2027.panel.open_folder"), true, mouseOver(mouseX, mouseY),
+            button(graphics, x + 142, buttonsY, 76, Component.translatable("mhm2027.panel.open_folder"), true, mouseOver(mouseX, mouseY),
                     () -> Util.getPlatform().openPath(folder));
         }
         if (rebooting) {
@@ -316,6 +320,8 @@ public class EdgePanelScreen extends Screen {
                 if (!builtin && !kernel.preset()) {
                     button(g, right - 86, y, 38, Component.translatable("mhm2027.panel.burn"), true, hover,
                             () -> send(PanelRequest.Action.BURN, kernel.id()));
+                    button(g, right - 122, y, 34, Component.translatable("mhm2027.panel.edit"), true, hover,
+                            () -> minecraft.setScreen(new CodeEditorScreen(kernel.id())));
                 }
             });
         }

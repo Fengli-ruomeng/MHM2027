@@ -153,6 +153,84 @@ public final class ScriptStore {
         }
     }
 
+    // region Editor file operations
+
+    /** Saves a file from the editor, creating it if needed. */
+    public static void save(MinecraftServer server, UUID player, String name, String source) throws InstallException {
+        Path file = fileFor(server, player, name);
+        checkSize(name, source);
+        if (!Files.exists(file)) {
+            checkRoom(file.getParent());
+        }
+        try {
+            Files.writeString(file, source, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new InstallException("Couldn't save " + name + ".lua: " + e.getMessage());
+        }
+    }
+
+    /** Creates a new file; refuses if one with that name exists. */
+    public static void create(MinecraftServer server, UUID player, String name, String source) throws InstallException {
+        Path file = fileFor(server, player, name);
+        if (Files.exists(file)) {
+            throw new InstallException(name + ".lua already exists");
+        }
+        save(server, player, name, source);
+    }
+
+    public static void rename(MinecraftServer server, UUID player, String from, String to) throws InstallException {
+        Path source = fileFor(server, player, from);
+        Path target = fileFor(server, player, to);
+        if (!Files.isRegularFile(source)) {
+            throw new InstallException("No script named " + from + ".lua in your storage");
+        }
+        if (Files.exists(target)) {
+            throw new InstallException(to + ".lua already exists");
+        }
+        try {
+            Files.move(source, target);
+        } catch (IOException e) {
+            throw new InstallException("Couldn't rename " + from + ".lua: " + e.getMessage());
+        }
+    }
+
+    public static void delete(MinecraftServer server, UUID player, String name) throws InstallException {
+        Path file = fileFor(server, player, name);
+        try {
+            if (!Files.deleteIfExists(file)) {
+                throw new InstallException("No script named " + name + ".lua in your storage");
+            }
+        } catch (IOException e) {
+            throw new InstallException("Couldn't delete " + name + ".lua: " + e.getMessage());
+        }
+    }
+
+    /** The file for a script name, only ever inside the player's own folder. */
+    private static Path fileFor(MinecraftServer server, UUID player, String name) throws InstallException {
+        if (!NAME.matcher(name).matches()) {
+            throw new InstallException("Script names may only use letters, digits, - and _ (up to 32)");
+        }
+        return ensureFolder(server, player).resolve(name + ".lua");
+    }
+
+    private static void checkSize(String name, String source) throws InstallException {
+        if (source.getBytes(StandardCharsets.UTF_8).length > MAX_SIZE) {
+            throw new InstallException(name + " is larger than 64 KB");
+        }
+    }
+
+    private static void checkRoom(Path folder) throws InstallException {
+        try (Stream<Path> files = Files.list(folder)) {
+            if (files.filter(file -> file.toString().endsWith(".lua")).count() >= MAX_FILES) {
+                throw new InstallException("Your storage is full (" + MAX_FILES + " scripts)");
+            }
+        } catch (IOException e) {
+            throw new InstallException("Couldn't read your storage: " + e.getMessage());
+        }
+    }
+
+    // endregion
+
     /** Guesses the kind from the first header in the file. Install still checks it properly. */
     static Kind kindOf(String source) {
         Matcher matcher = HEADER.matcher(source);
