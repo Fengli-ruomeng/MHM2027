@@ -2,6 +2,7 @@ package com.mhm.mhm2027.gateway;
 
 import com.mhm.mhm2027.Config;
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.terminal.Terminals;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -63,7 +64,8 @@ public class GatewayEvents {
             return;
         }
         double saturation = Mth.clamp(food.getSaturationLevel() / MAX_SATURATION, 0.0f, 1.0f);
-        double ratePerSecond = Mth.lerp(saturation, Config.GC_RATE_ZERO_SATURATION.get(), Config.GC_RATE_FULL_SATURATION.get());
+        double ratePerSecond = Mth.lerp(saturation, Config.GC_RATE_ZERO_SATURATION.get(), Config.GC_RATE_FULL_SATURATION.get())
+                * Terminals.existing(player).map(terminal -> terminal.kernel().settings().gcMultiplier()).orElse(1.0);
         data.setLeakMb(data.leakMb() - data.tier().ramMb() * ratePerSecond / TICKS_PER_SECOND);
     }
 

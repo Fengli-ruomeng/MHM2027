@@ -49,10 +49,10 @@ public class GatewayHud implements GuiLayer {
         Font font = minecraft.font;
         int y = Y;
 
-        graphics.text(font, Component.translatable("mhm2027.hud.title", tier.label(), tier.tops()), X, y, COLOR_TITLE);
+        graphics.text(font, Component.translatable("mhm2027.hud.title", tier.label(), data.freeTops(), tier.tops()), X, y, COLOR_TITLE);
         y += LINE_HEIGHT;
 
-        // RAM bar shows what is taken. Programs will add to it later; for now only Leak does.
+        // RAM bar shows what is taken: kernel and programs plus Leak.
         double ramMb = tier.ramMb();
         double usedMb = ramMb - data.freeRamMb();
         boolean outOfMemory = data.isOutOfMemory();

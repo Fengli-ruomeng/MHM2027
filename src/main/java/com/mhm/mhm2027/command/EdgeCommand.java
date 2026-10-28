@@ -1,26 +1,36 @@
 package com.mhm.mhm2027.command;
 
+import static com.mhm.mhm2027.gateway.GatewayData.formatMb;
+
 import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.function.ObjDoubleConsumer;
 
 import com.mhm.mhm2027.Mhm2027;
-import static com.mhm.mhm2027.gateway.GatewayData.formatMb;
-
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.terminal.InstallException;
+import com.mhm.mhm2027.terminal.Kernel;
+import com.mhm.mhm2027.terminal.Program;
+import com.mhm.mhm2027.terminal.ScriptStore;
+import com.mhm.mhm2027.terminal.Terminal;
+import com.mhm.mhm2027.terminal.Terminals;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -30,15 +40,31 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 /**
- * The LV0 terminal: read your own gateway diagnostics. A real terminal screen comes later;
- * until then this command is the terminal.
+ * The terminal. A terminal screen comes later; until then these commands are the terminal.
  *
- * /edge                          your own status
- * /edge status [player]          (op for other players)
+ * /edge                              your gateway status
+ * /edge status [player]              (op for other players)
+ * /edge scripts                      scripts in the world's edge/scripts folder
+ * /edge run|stop <name>              start or stop a program
+ * /edge ps                           running programs and what they use
+ * /edge log                          the last lines of the terminal log
+ * /edge kernel [install <name>]      show or swap the kernel ("Baseline" is built in)
+ * /edge reboot                       stop everything, with a short debuff
  * /edge set level|buffer|leak|heat <players> <value>   (op, for testing)
  */
 @EventBusSubscriber(modid = Mhm2027.MODID)
 public class EdgeCommand {
+    private static final int LOG_LINES_SHOWN = 12;
+
+    private static final SuggestionProvider<CommandSourceStack> SCRIPTS = (ctx, builder) ->
+            SharedSuggestionProvider.suggest(ScriptStore.list(ctx.getSource().getServer()), builder);
+    private static final SuggestionProvider<CommandSourceStack> RUNNING = (ctx, builder) -> {
+        if (ctx.getSource().getEntity() instanceof ServerPlayer player) {
+            return SharedSuggestionProvider.suggest(Terminals.get(player).programs().stream().map(Program::name), builder);
+        }
+        return builder.buildFuture();
+    };
+
     @SubscribeEvent
     static void onRegisterCommands(RegisterCommandsEvent event) {
         register(event.getDispatcher());
@@ -52,6 +78,21 @@ public class EdgeCommand {
                         .then(Commands.argument("player", EntityArgument.player())
                                 .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                                 .executes(ctx -> showStatus(ctx.getSource(), EntityArgument.getPlayer(ctx, "player")))))
+                .then(Commands.literal("scripts").executes(ctx -> listScripts(ctx.getSource())))
+                .then(Commands.literal("run")
+                        .then(Commands.argument("script", StringArgumentType.word()).suggests(SCRIPTS)
+                                .executes(ctx -> run(ctx.getSource(), StringArgumentType.getString(ctx, "script")))))
+                .then(Commands.literal("stop")
+                        .then(Commands.argument("program", StringArgumentType.word()).suggests(RUNNING)
+                                .executes(ctx -> stop(ctx.getSource(), StringArgumentType.getString(ctx, "program")))))
+                .then(Commands.literal("ps").executes(ctx -> showPrograms(ctx.getSource())))
+                .then(Commands.literal("log").executes(ctx -> showLog(ctx.getSource())))
+                .then(Commands.literal("kernel")
+                        .executes(ctx -> showKernel(ctx.getSource()))
+                        .then(Commands.literal("install")
+                                .then(Commands.argument("script", StringArgumentType.word()).suggests(SCRIPTS)
+                                        .executes(ctx -> installKernel(ctx.getSource(), StringArgumentType.getString(ctx, "script"))))))
+                .then(Commands.literal("reboot").executes(ctx -> reboot(ctx.getSource())))
                 .then(Commands.literal("set")
                         .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                         .then(setter("level", IntegerArgumentType.integer(GatewayTier.MIN_LEVEL, GatewayTier.MAX_LEVEL),
@@ -60,6 +101,150 @@ public class EdgeCommand {
                         .then(setter("leak", DoubleArgumentType.doubleArg(0), GatewayData::setLeakMb))
                         .then(setter("heat", DoubleArgumentType.doubleArg(0, GatewayData.MAX_HEAT), GatewayData::setHeat))));
     }
+
+    // region Status
+
+    private static int showStatus(CommandSourceStack source, ServerPlayer player) {
+        GatewayData data = player.getData(ModAttachments.GATEWAY);
+        GatewayTier tier = data.tier();
+
+        MutableComponent out = Component.translatable("mhm2027.terminal.header", tier.label(), tier.band())
+                .withStyle(ChatFormatting.AQUA);
+        if (tier.isNull()) {
+            out.append("\n").append(Component.translatable("mhm2027.terminal.null").withStyle(ChatFormatting.GRAY));
+            source.sendSuccess(() -> out, false);
+            return 1;
+        }
+
+        Terminal terminal = Terminals.get(player);
+        out.append("\n").append(Component.translatable("mhm2027.terminal.ram",
+                formatMb(data.freeRamMb()), formatMb(tier.ramMb()), formatMb(data.programRamMb()), formatMb(data.leakMb()))
+                .withStyle(data.isOutOfMemory() ? ChatFormatting.RED : ChatFormatting.WHITE));
+        out.append("\n").append(Component.translatable("mhm2027.terminal.tops", data.freeTops(), tier.tops()));
+        out.append("\n").append(Component.translatable("mhm2027.terminal.buffer",
+                formatMb(data.bufferMb()), formatMb(tier.bufferMb())));
+        out.append("\n").append(Component.translatable("mhm2027.terminal.heat", formatNumber(data.heat())));
+        out.append("\n").append(Component.translatable("mhm2027.terminal.kernel_line",
+                terminal.kernel().name(), terminal.programs().size()));
+        out.append("\n").append(Component.translatable("mhm2027.terminal.slots",
+                tier.standardSlots(), tier.overloadSlots(), tier.hookPoints()).withStyle(ChatFormatting.GRAY));
+        if (terminal.isRebooting()) {
+            out.append("\n").append(Component.translatable("mhm2027.terminal.rebooting", terminal.lockReason(), terminal.lockSecondsLeft())
+                    .withStyle(ChatFormatting.YELLOW));
+        }
+        if (data.isOutOfMemory()) {
+            out.append("\n").append(Component.translatable("mhm2027.terminal.oom").withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+        }
+        source.sendSuccess(() -> out, false);
+        return 1;
+    }
+
+    // endregion
+
+    // region Programs and kernel
+
+    private static int listScripts(CommandSourceStack source) {
+        List<String> scripts = ScriptStore.list(source.getServer());
+        MutableComponent out = Component.translatable("mhm2027.terminal.scripts_header", ScriptStore.folder(source.getServer()).toString())
+                .withStyle(ChatFormatting.AQUA);
+        out.append("\n").append(scripts.isEmpty()
+                ? Component.translatable("mhm2027.terminal.none").withStyle(ChatFormatting.GRAY)
+                : Component.literal(String.join(", ", scripts)));
+        source.sendSuccess(() -> out, false);
+        return scripts.size();
+    }
+
+    private static int run(CommandSourceStack source, String script) throws CommandSyntaxException {
+        Terminal terminal = Terminals.get(source.getPlayerOrException());
+        try {
+            Program program = terminal.start(script);
+            source.sendSuccess(() -> Component.translatable("mhm2027.terminal.started", program.name(), program.type().id(),
+                    formatMb(program.ramMb()), program.tops()), false);
+            return 1;
+        } catch (InstallException e) {
+            source.sendFailure(Component.literal(e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int stop(CommandSourceStack source, String name) throws CommandSyntaxException {
+        Terminal terminal = Terminals.get(source.getPlayerOrException());
+        if (!terminal.stop(name)) {
+            source.sendFailure(Component.translatable("mhm2027.terminal.not_running", name));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.translatable("mhm2027.terminal.stopped", name), false);
+        return 1;
+    }
+
+    private static int showPrograms(CommandSourceStack source) throws CommandSyntaxException {
+        Terminal terminal = Terminals.get(source.getPlayerOrException());
+        Kernel kernel = terminal.kernel();
+        MutableComponent out = Component.translatable("mhm2027.terminal.ps_header", terminal.programs().size()).withStyle(ChatFormatting.AQUA);
+        out.append("\n").append(Component.translatable("mhm2027.terminal.ps_kernel", kernel.name(),
+                formatMb(kernel.ramMb()), kernel.topsReserve()).withStyle(ChatFormatting.GRAY));
+        for (Program program : terminal.programs()) {
+            out.append("\n").append(Component.translatable("mhm2027.terminal.ps_line", program.name(), program.type().id(),
+                    formatMb(program.ramMb()), program.tops(), formatNumber(program.averageTops()), formatNumber(program.peakTops()),
+                    program.state(terminal.now())));
+        }
+        source.sendSuccess(() -> out, false);
+        return terminal.programs().size();
+    }
+
+    private static int showLog(CommandSourceStack source) throws CommandSyntaxException {
+        List<String> log = Terminals.get(source.getPlayerOrException()).log();
+        MutableComponent out = Component.translatable("mhm2027.terminal.log_header").withStyle(ChatFormatting.AQUA);
+        if (log.isEmpty()) {
+            out.append("\n").append(Component.translatable("mhm2027.terminal.none").withStyle(ChatFormatting.GRAY));
+        }
+        for (String line : log.subList(Math.max(0, log.size() - LOG_LINES_SHOWN), log.size())) {
+            out.append("\n").append(Component.literal(line));
+        }
+        source.sendSuccess(() -> out, false);
+        return log.size();
+    }
+
+    private static int showKernel(CommandSourceStack source) throws CommandSyntaxException {
+        Kernel kernel = Terminals.get(source.getPlayerOrException()).kernel();
+        var settings = kernel.settings();
+        MutableComponent out = Component.translatable("mhm2027.terminal.kernel_header", kernel.name()).withStyle(ChatFormatting.AQUA);
+        out.append("\n").append(Component.translatable("mhm2027.terminal.kernel_settings",
+                settings.schedule(), settings.gc(), settings.verify(), settings.rateLimit()));
+        out.append("\n").append(Component.translatable("mhm2027.terminal.kernel_hooks",
+                kernel.hookNames().isEmpty() ? "-" : String.join(", ", kernel.hookNames())));
+        out.append("\n").append(Component.translatable("mhm2027.terminal.kernel_cost", formatMb(kernel.ramMb()), kernel.topsReserve())
+                .withStyle(ChatFormatting.GRAY));
+        source.sendSuccess(() -> out, false);
+        return 1;
+    }
+
+    private static int installKernel(CommandSourceStack source, String script) throws CommandSyntaxException {
+        Terminal terminal = Terminals.get(source.getPlayerOrException());
+        try {
+            Kernel kernel = terminal.installKernel(script);
+            source.sendSuccess(() -> Component.translatable("mhm2027.terminal.kernel_installed", kernel.name()), false);
+            return 1;
+        } catch (InstallException e) {
+            source.sendFailure(Component.literal(e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int reboot(CommandSourceStack source) throws CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        if (player.getData(ModAttachments.GATEWAY).tier().isNull()) {
+            source.sendFailure(Component.translatable("mhm2027.terminal.null"));
+            return 0;
+        }
+        Terminals.get(player).reboot();
+        source.sendSuccess(() -> Component.translatable("mhm2027.terminal.rebooted"), false);
+        return 1;
+    }
+
+    // endregion
+
+    // region Testing
 
     private static LiteralArgumentBuilder<CommandSourceStack> setter(String name, ArgumentType<? extends Number> type, ObjDoubleConsumer<GatewayData> apply) {
         return Commands.literal(name)
@@ -81,33 +266,7 @@ public class EdgeCommand {
         return players.size();
     }
 
-    private static int showStatus(CommandSourceStack source, ServerPlayer player) {
-        GatewayData data = player.getData(ModAttachments.GATEWAY);
-        GatewayTier tier = data.tier();
-
-        MutableComponent out = Component.translatable("mhm2027.terminal.header", tier.label(), tier.band())
-                .withStyle(ChatFormatting.AQUA);
-        if (tier.isNull()) {
-            out.append("\n").append(Component.translatable("mhm2027.terminal.null").withStyle(ChatFormatting.GRAY));
-            source.sendSuccess(() -> out, false);
-            return 1;
-        }
-
-        out.append("\n").append(Component.translatable("mhm2027.terminal.ram",
-                formatMb(data.freeRamMb()), formatMb(tier.ramMb()), formatMb(data.leakMb()))
-                .withStyle(data.isOutOfMemory() ? ChatFormatting.RED : ChatFormatting.WHITE));
-        out.append("\n").append(Component.translatable("mhm2027.terminal.tops", tier.tops()));
-        out.append("\n").append(Component.translatable("mhm2027.terminal.buffer",
-                formatMb(data.bufferMb()), formatMb(tier.bufferMb())));
-        out.append("\n").append(Component.translatable("mhm2027.terminal.heat", formatNumber(data.heat())));
-        out.append("\n").append(Component.translatable("mhm2027.terminal.slots",
-                tier.standardSlots(), tier.overloadSlots(), tier.hookPoints()).withStyle(ChatFormatting.GRAY));
-        if (data.isOutOfMemory()) {
-            out.append("\n").append(Component.translatable("mhm2027.terminal.oom").withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
-        }
-        source.sendSuccess(() -> out, false);
-        return 1;
-    }
+    // endregion
 
     private static String formatNumber(double value) {
         return value == Math.rint(value) ? String.valueOf((long) value) : String.format(Locale.ROOT, "%.1f", value);

@@ -14,40 +14,53 @@ import net.minecraft.network.codec.StreamCodec;
  * this holds only what changes during play.
  *
  * Units: RAM, Leak and Buffer are in MB. Heat runs from 0 to {@link #MAX_HEAT}.
+ * Program RAM and reserved TOPS are owned by the server-side terminal; they are synced
+ * to the client for the HUD but never saved, since programs don't survive a logout.
  */
 public class GatewayData {
     public static final double MAX_HEAT = 100.0;
+    public static final String DEFAULT_KERNEL = "Baseline";
 
     public static final Codec<GatewayData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.INT.fieldOf("level").forGetter(GatewayData::level),
             Codec.DOUBLE.optionalFieldOf("buffer", 0.0).forGetter(GatewayData::bufferMb),
             Codec.DOUBLE.optionalFieldOf("leak", 0.0).forGetter(GatewayData::leakMb),
-            Codec.DOUBLE.optionalFieldOf("heat", 0.0).forGetter(GatewayData::heat)
-    ).apply(instance, GatewayData::new));
+            Codec.DOUBLE.optionalFieldOf("heat", 0.0).forGetter(GatewayData::heat),
+            Codec.STRING.optionalFieldOf("kernel", DEFAULT_KERNEL).forGetter(GatewayData::kernel)
+    ).apply(instance, (level, buffer, leak, heat, kernel) -> new GatewayData(level, buffer, leak, heat, kernel, 0, 0)));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, GatewayData> STREAM_CODEC = StreamCodec.composite(
             ByteBufCodecs.VAR_INT, GatewayData::level,
             ByteBufCodecs.DOUBLE, GatewayData::bufferMb,
             ByteBufCodecs.DOUBLE, GatewayData::leakMb,
             ByteBufCodecs.DOUBLE, GatewayData::heat,
+            ByteBufCodecs.STRING_UTF8, GatewayData::kernel,
+            ByteBufCodecs.VAR_INT, GatewayData::programRamMb,
+            ByteBufCodecs.VAR_INT, GatewayData::topsInUse,
             GatewayData::new);
 
     private int level;
     private double bufferMb;
     private double leakMb;
     private double heat;
+    private String kernel;
+    private int programRamMb;
+    private int topsInUse;
     private boolean dirty;
 
-    private GatewayData(int level, double bufferMb, double leakMb, double heat) {
+    private GatewayData(int level, double bufferMb, double leakMb, double heat, String kernel, int programRamMb, int topsInUse) {
         this.level = Math.clamp(level, GatewayTier.MIN_LEVEL, GatewayTier.MAX_LEVEL);
         this.bufferMb = Math.clamp(bufferMb, 0, tier().bufferMb());
         this.leakMb = Math.max(0, leakMb);
         this.heat = Math.clamp(heat, 0, MAX_HEAT);
+        this.kernel = kernel;
+        this.programRamMb = programRamMb;
+        this.topsInUse = topsInUse;
     }
 
-    /** A fresh gateway at the given level, with a full Buffer. */
+    /** A fresh gateway at the given level, with a full Buffer and the Baseline kernel. */
     public static GatewayData fresh(GatewayTier tier) {
-        return new GatewayData(tier.level(), tier.bufferMb(), 0, 0);
+        return new GatewayData(tier.level(), tier.bufferMb(), 0, 0, DEFAULT_KERNEL, 0, 0);
     }
 
     public GatewayTier tier() {
@@ -70,12 +83,28 @@ public class GatewayData {
         return heat;
     }
 
-    /**
-     * Free RAM = capacity - running programs - Leak. Programs don't exist yet,
-     * so for now only Leak takes up space.
-     */
+    /** Name of the installed kernel script, or {@link #DEFAULT_KERNEL} for the built-in one. */
+    public String kernel() {
+        return kernel;
+    }
+
+    /** RAM held by the kernel and running programs. */
+    public int programRamMb() {
+        return programRamMb;
+    }
+
+    /** TOPS reserved by the kernel and programs, plus TOPS still recovering from stopped ones. */
+    public int topsInUse() {
+        return topsInUse;
+    }
+
+    /** Free RAM = capacity - kernel and programs - Leak. */
     public double freeRamMb() {
-        return tier().ramMb() - leakMb;
+        return tier().ramMb() - programRamMb - leakMb;
+    }
+
+    public int freeTops() {
+        return tier().tops() - topsInUse;
     }
 
     public boolean isOutOfMemory() {
@@ -118,7 +147,21 @@ public class GatewayData {
         markDirty();
     }
 
-    /** Clears the per-body state on respawn. Level and Buffer carry over. */
+    public void setKernel(String name) {
+        kernel = name;
+        markDirty();
+    }
+
+    /** Called by the terminal every tick; only marks the data dirty when something changed. */
+    public void setUsage(int ramMb, int tops) {
+        if (ramMb != programRamMb || tops != topsInUse) {
+            programRamMb = ramMb;
+            topsInUse = tops;
+            markDirty();
+        }
+    }
+
+    /** Clears the per-body state on respawn. Level, Buffer and kernel carry over. */
     public void resetBody() {
         leakMb = 0;
         heat = 0;

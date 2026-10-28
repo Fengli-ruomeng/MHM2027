@@ -27,7 +27,13 @@ sourceSets.main.resources {
 }
 
 repositories {
-    // Add here additional repositories if required by some of the dependencies below.
+    mavenCentral()
+    // Cobalt (the Lua runtime) is published on SquidDev's Maven, alongside CC: Tweaked.
+    maven {
+        name = "SquidDev"
+        url = "https://maven.squiddev.cc"
+        content { includeGroup("cc.tweaked") }
+    }
 }
 
 base {
@@ -111,6 +117,20 @@ configurations {
 }
 
 dependencies {
+    // Cobalt: the sandboxed Lua 5.2 runtime used by ComputerCraft: Tweaked. MIT licensed, no dependencies.
+    // Bundled inside the mod jar (jar-in-jar) so players don't install it separately.
+    jarJar(implementation("cc.tweaked:cobalt")) {
+        version {
+            strictly "[0.9.9,0.10)"
+            prefer "0.9.9"
+        }
+    }
+
+    // Plain unit tests for logic that doesn't need a running game (the Lua sandbox, install checks).
+    testImplementation platform("org.junit:junit-bom:5.11.4")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
     // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"
@@ -169,6 +189,10 @@ publishing {
             url "file://${project.projectDir}/repo"
         }
     }
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
 }
 
 tasks.withType(JavaCompile).configureEach {

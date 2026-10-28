@@ -1,0 +1,455 @@
+package com.mhm.mhm2027.terminal;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Supplier;
+
+import org.jspecify.annotations.Nullable;
+import org.squiddev.cobalt.ValueFactory;
+import org.squiddev.cobalt.Varargs;
+
+import com.mhm.mhm2027.Config;
+import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.gateway.GatewayData;
+import com.mhm.mhm2027.gateway.GatewayTier;
+import com.mhm.mhm2027.gateway.ModAttachments;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.Holder;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+
+/**
+ * A player's terminal: the kernel, the running programs, and the rules between them and the
+ * gateway's hardware. Lives on the server only, for as long as the player is online.
+ */
+public final class Terminal {
+    private static final int LOG_LINES = 50;
+    /** Freed TOPS comes back over 3 seconds. */
+    private static final int TOPS_RECOVERY_TICKS = 60;
+    private static final int PANIC_LOCK_TICKS = 100;
+    private static final int REBOOT_LOCK_TICKS = 60;
+    private static final int KERNEL_SWAP_LOCK_TICKS = 200;
+    /** Each program that crashes in a panic leaves this share of its RAM behind as Leak. */
+    private static final double PANIC_LEAK_SHARE = 0.25;
+
+    private final UUID owner;
+    private final MinecraftServer server;
+    private Kernel kernel;
+    private final List<Program> programs = new ArrayList<>();
+    private final Deque<String> log = new ArrayDeque<>();
+    private final List<int[]> recoveringTops = new ArrayList<>();
+    private final Map<String, Long> cooldowns = new HashMap<>();
+    private final Map<Identifier, TimedModifier> modifiers = new HashMap<>();
+
+    private long now;
+    private long lockedUntil;
+    private String lockReason = "";
+    private @Nullable String pendingPanic;
+
+    Terminal(ServerPlayer player) {
+        this.owner = player.getUUID();
+        this.server = player.level().getServer();
+        this.kernel = loadSavedKernel(player);
+    }
+
+    // region Lifecycle
+
+    /**
+     * Loads, checks and starts a script from the script folder.
+     *
+     * @throws InstallException with a player-facing reason if it can't start
+     */
+    public Program start(String file) throws InstallException {
+        ServerPlayer player = requirePlayer();
+        GatewayTier tier = data(player).tier();
+        if (tier.isNull()) {
+            throw new InstallException("A Null gateway can't run programs");
+        }
+        if (isRebooting()) {
+            throw new InstallException("The terminal is rebooting (" + lockReason + ")");
+        }
+
+        Program program = new Program(this, file, ScriptStore.read(server, file), tier.level(), tier.tops());
+        if (find(program.name()).isPresent()) {
+            throw new InstallException(program.name() + " is already running");
+        }
+        int freeTops = freeTops(player);
+        if (freeTops - program.tops() < 1) {
+            throw new InstallException("Not enough TOPS: " + program.name() + " reserves " + program.tops() + ", "
+                    + freeTops + " free, and 1 must stay free");
+        }
+        double freeRam = data(player).freeRamMb();
+        if (program.ramMb() > freeRam) {
+            throw new InstallException("Not enough RAM: " + program.name() + " needs " + GatewayData.formatMb(program.ramMb())
+                    + ", " + GatewayData.formatMb(Math.max(0, freeRam)) + " free");
+        }
+        if (program.needsSlot() && slotsInUse() >= tier.standardSlots()) {
+            throw new InstallException(program.name() + " changes your body and needs a standard slot; all "
+                    + tier.standardSlots() + " are in use");
+        }
+
+        programs.add(program);
+        program.begin();
+        updateUsage(player);
+        log(program.name(), "started (" + program.type().id() + ", " + GatewayData.formatMb(program.ramMb()) + ", "
+                + program.tops() + " TOPS)");
+        return program;
+    }
+
+    /** Stops a program by name, running its on_stop. Its TOPS come back over 3 seconds. */
+    public boolean stop(String name) {
+        Optional<Program> program = find(name);
+        if (program.isEmpty()) {
+            return false;
+        }
+        programs.remove(program.get());
+        program.get().stop(this, instructionsPerTops());
+        recoveringTops.add(new int[]{program.get().tops(), TOPS_RECOVERY_TICKS});
+        log(name, "stopped");
+        withPlayer(this::updateUsage);
+        return true;
+    }
+
+    /** A voluntary reboot: kicks every program out, with a few seconds of mild debuff. */
+    public void reboot() {
+        stopAllSilently();
+        lock("reboot", REBOOT_LOCK_TICKS);
+        withPlayer(player -> applyDowntimeDebuff(player, REBOOT_LOCK_TICKS, false));
+        log("kernel", "rebooted");
+    }
+
+    /**
+     * Swaps the kernel. This reboots the terminal and takes longer than a normal reboot,
+     * with a heavier debuff while the new kernel comes up.
+     */
+    public Kernel installKernel(String file) throws InstallException {
+        ServerPlayer player = requirePlayer();
+        GatewayTier tier = data(player).tier();
+        if (tier.isNull()) {
+            throw new InstallException("A Null gateway has no kernel");
+        }
+        if (isRebooting()) {
+            throw new InstallException("The terminal is rebooting (" + lockReason + ")");
+        }
+        Kernel next = file.equals(GatewayData.DEFAULT_KERNEL)
+                ? Kernel.baseline()
+                : Kernel.load(this, file, ScriptStore.read(server, file), tier.level(), tier.hookPoints());
+
+        stopAllSilently();
+        kernel = next;
+        data(player).setKernel(next.isBaseline() ? GatewayData.DEFAULT_KERNEL : file);
+        lock("kernel swap", KERNEL_SWAP_LOCK_TICKS);
+        applyDowntimeDebuff(player, KERNEL_SWAP_LOCK_TICKS, true);
+        updateUsage(player);
+        log("kernel", "installed " + next.name());
+        return next;
+    }
+
+    /** Death: the body is gone, so programs and timed effects end. The kernel carries over. */
+    void onDeath() {
+        stopAllSilently();
+        modifiers.clear();
+        cooldowns.clear();
+        lockedUntil = 0;
+        pendingPanic = null;
+    }
+
+    /** Logout: take every timed modifier back off the player. */
+    void discard(ServerPlayer player) {
+        for (TimedModifier modifier : modifiers.values()) {
+            AttributeInstance instance = player.getAttribute(modifier.attribute());
+            if (instance != null) {
+                instance.removeModifier(modifier.id());
+            }
+        }
+        modifiers.clear();
+    }
+
+    private void stopAllSilently() {
+        programs.clear();
+        recoveringTops.clear();
+    }
+
+    private void lock(String reason, int ticks) {
+        lockedUntil = now + ticks;
+        lockReason = reason;
+    }
+
+    // endregion
+
+    // region Tick
+
+    void tick(ServerPlayer player) {
+        now++;
+        tickModifiers(player);
+        recoveringTops.removeIf(entry -> --entry[1] <= 0);
+
+        if (isRebooting()) {
+            updateUsage(player);
+            return;
+        }
+        if (pendingPanic != null) {
+            String reason = pendingPanic;
+            pendingPanic = null;
+            kernel.callHook(this, Kernel.ON_PANIC, ValueFactory.valueOf(reason));
+        }
+
+        if (!programs.isEmpty() && freeTops(player) <= 0) {
+            panic(player, "out of TOPS");
+            return;
+        }
+        if (now % 20 == 0 && data(player).isOutOfMemory() && !programs.isEmpty()) {
+            handleLowRam(player);
+        }
+
+        // Iterate over a copy: programs may start or stop other programs while they run.
+        int instructionsPerTops = instructionsPerTops();
+        for (Program program : List.copyOf(programs)) {
+            if (!programs.contains(program)) {
+                continue;
+            }
+            if (!program.tick(this, now, instructionsPerTops)) {
+                programs.remove(program);
+            } else if (program.stopRequested()) {
+                stop(program.name());
+            }
+        }
+        updateUsage(player);
+    }
+
+    /**
+     * Kernel panic: every program crashes, each leaving a quarter of its RAM as Leak, and
+     * nothing can start for 5 seconds. Afterwards on_panic decides what restarts.
+     */
+    private void panic(ServerPlayer player, String reason) {
+        GatewayData data = data(player);
+        double leak = programs.stream().mapToDouble(program -> program.ramMb() * PANIC_LEAK_SHARE).sum();
+        data.setLeakMb(data.leakMb() + leak);
+        stopAllSilently();
+        lock("kernel panic", PANIC_LOCK_TICKS);
+        pendingPanic = reason;
+        applyDowntimeDebuff(player, PANIC_LOCK_TICKS, false);
+        updateUsage(player);
+        log("kernel", "PANIC: " + reason);
+        player.sendSystemMessage(Component.translatable("mhm2027.terminal.panic", reason).withStyle(ChatFormatting.RED));
+    }
+
+    /** Out of memory: on_low_ram decides what to stop; by default the newest program goes. */
+    private void handleLowRam(ServerPlayer player) {
+        int before = programs.size();
+        kernel.callHook(this, Kernel.ON_LOW_RAM, ValueFactory.valueOf(data(player).freeRamMb()));
+        if (programs.size() == before && data(player).isOutOfMemory() && !programs.isEmpty()) {
+            Program newest = programs.removeLast();
+            log(newest.name(), "force-stopped: out of memory");
+        }
+    }
+
+    // endregion
+
+    // region Events
+
+    /** Queues an event on every program that handles it. Arguments are built per program. */
+    void fire(String event, Supplier<Varargs> args) {
+        if (isRebooting()) {
+            return;
+        }
+        for (Program program : programs) {
+            program.enqueue(event, args);
+        }
+    }
+
+    // endregion
+
+    // region Resources
+
+    public int ramInUse() {
+        return kernel.ramMb() + programs.stream().mapToInt(Program::ramMb).sum();
+    }
+
+    public int topsInUse() {
+        int recovering = 0;
+        for (int[] entry : recoveringTops) {
+            recovering += (int) Math.ceil((double) entry[0] * entry[1] / TOPS_RECOVERY_TICKS);
+        }
+        return kernel.topsReserve() + programs.stream().mapToInt(Program::tops).sum() + recovering;
+    }
+
+    int freeTops(ServerPlayer player) {
+        return data(player).tier().tops() - topsInUse();
+    }
+
+    private int slotsInUse() {
+        return (int) programs.stream().filter(Program::needsSlot).count();
+    }
+
+    private void updateUsage(ServerPlayer player) {
+        data(player).setUsage(ramInUse(), topsInUse());
+    }
+
+    private static int instructionsPerTops() {
+        return Config.INSTRUCTIONS_PER_TOPS.get();
+    }
+
+    // endregion
+
+    // region Helpers for the APIs
+
+    /** Starts a cooldown if the API is ready. Returns false while it's still cooling down. */
+    boolean tryCooldown(ApiSpec spec) {
+        if (spec.cooldownTicks() <= 0) {
+            return true;
+        }
+        long readyAt = cooldowns.getOrDefault(spec.id(), 0L);
+        if (now < readyAt) {
+            return false;
+        }
+        cooldowns.put(spec.id(), now + spec.cooldownTicks());
+        return true;
+    }
+
+    /** Adds a modifier that the terminal removes again after {@code ticks}. Re-applying refreshes it. */
+    void addTimedModifier(ServerPlayer player, Holder<Attribute> attribute, String key, double amount,
+                          AttributeModifier.Operation operation, int ticks) {
+        AttributeInstance instance = player.getAttribute(attribute);
+        if (instance == null) {
+            return;
+        }
+        Identifier id = Identifier.fromNamespaceAndPath(Mhm2027.MODID, "terminal/" + key);
+        instance.removeModifier(id);
+        instance.addTransientModifier(new AttributeModifier(id, amount, operation));
+        modifiers.put(id, new TimedModifier(attribute, id, now + ticks));
+    }
+
+    private void tickModifiers(ServerPlayer player) {
+        for (Iterator<TimedModifier> it = modifiers.values().iterator(); it.hasNext(); ) {
+            TimedModifier modifier = it.next();
+            if (now >= modifier.expiresAt()) {
+                AttributeInstance instance = player.getAttribute(modifier.attribute());
+                if (instance != null) {
+                    instance.removeModifier(modifier.id());
+                }
+                it.remove();
+            }
+        }
+    }
+
+    private void applyDowntimeDebuff(ServerPlayer player, int ticks, boolean moderate) {
+        player.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, ticks, 0));
+        player.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, ticks, 0));
+        if (moderate) {
+            player.addEffect(new MobEffectInstance(MobEffects.HUNGER, ticks, 0));
+            addTimedModifier(player, Attributes.MAX_HEALTH, "kernel_swap", -4, AttributeModifier.Operation.ADD_VALUE, ticks);
+        }
+    }
+
+    // endregion
+
+    // region Accessors
+
+    public void log(String source, String message) {
+        log.addLast("[" + source + "] " + message);
+        while (log.size() > LOG_LINES) {
+            log.removeFirst();
+        }
+    }
+
+    void notifyCrash(Program program) {
+        withPlayer(player -> player.sendOverlayMessage(
+                Component.translatable("mhm2027.terminal.crash", program.name()).withStyle(ChatFormatting.RED)));
+    }
+
+    public List<String> log() {
+        return List.copyOf(log);
+    }
+
+    public List<Program> programs() {
+        return List.copyOf(programs);
+    }
+
+    public Optional<Program> find(String name) {
+        return programs.stream().filter(program -> program.name().equals(name)).findFirst();
+    }
+
+    public Kernel kernel() {
+        return kernel;
+    }
+
+    public long now() {
+        return now;
+    }
+
+    public boolean isRebooting() {
+        return now < lockedUntil;
+    }
+
+    public String lockReason() {
+        return lockReason;
+    }
+
+    public int lockSecondsLeft() {
+        return (int) Math.ceil((lockedUntil - now) / 20.0);
+    }
+
+    @Nullable ServerPlayer player() {
+        return server.getPlayerList().getPlayer(owner);
+    }
+
+    MinecraftServer server() {
+        return server;
+    }
+
+    private ServerPlayer requirePlayer() throws InstallException {
+        ServerPlayer player = player();
+        if (player == null) {
+            throw new InstallException("The terminal's owner is offline");
+        }
+        return player;
+    }
+
+    private void withPlayer(java.util.function.Consumer<ServerPlayer> action) {
+        ServerPlayer player = player();
+        if (player != null) {
+            action.accept(player);
+        }
+    }
+
+    static GatewayData data(ServerPlayer player) {
+        return player.getData(ModAttachments.GATEWAY);
+    }
+
+    private Kernel loadSavedKernel(ServerPlayer player) {
+        GatewayData data = data(player);
+        String file = data.kernel();
+        if (file.equals(GatewayData.DEFAULT_KERNEL) || data.tier().isNull()) {
+            return Kernel.baseline();
+        }
+        try {
+            return Kernel.load(this, file, ScriptStore.read(server, file), data.tier().level(), data.tier().hookPoints());
+        } catch (InstallException e) {
+            log("kernel", "couldn't load " + file + " (" + e.getMessage() + "); using " + GatewayData.DEFAULT_KERNEL);
+            data.setKernel(GatewayData.DEFAULT_KERNEL);
+            return Kernel.baseline();
+        }
+    }
+
+    private record TimedModifier(Holder<Attribute> attribute, Identifier id, long expiresAt) {
+    }
+
+    // endregion
+}

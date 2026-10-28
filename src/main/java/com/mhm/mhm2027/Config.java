@@ -31,6 +31,14 @@ public class Config {
             .defineInRange("heatCoolingPerSecond", 2.0, 0.0, 100.0);
 
     static {
+        BUILDER.pop().push("runtime");
+    }
+
+    public static final ModConfigSpec.IntValue INSTRUCTIONS_PER_TOPS = BUILDER
+            .comment("Lua instructions a program may run each tick per reserved TOPS. Lower this to reduce server load")
+            .defineInRange("instructionsPerTops", 20, 1, 1000);
+
+    static {
         BUILDER.pop();
     }
 
