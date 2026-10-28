@@ -1,0 +1,26 @@
+{
+  "mhm2027.terminal.header": "== Terminal · %s %s ==",
+  "mhm2027.terminal.null": "Null gateway: no cyber layer. Immune to all hacking.",
+  "mhm2027.terminal.ram": "RAM: %s free of %s (Leak %s)",
+  "mhm2027.terminal.tops": "TOPS: %s",
+  "mhm2027.terminal.buffer": "Buffer: %s / %s",
+  "mhm2027.terminal.heat": "Heat: %s / 100",
+  "mhm2027.terminal.slots": "Slots: %s standard, %s overload · Kernel hook points: %s",
+  "mhm2027.terminal.oom": "OUT OF MEMORY",
+  "mhm2027.command.set": "Set gateway %s to %s for %s player(s)",
+
+  "mhm2027.hud.title": "%s · %s TOPS",
+  "mhm2027.hud.ram": "RAM %s / %s",
+  "mhm2027.hud.buffer": "Buffer %s / %s",
+  "mhm2027.hud.heat": "Heat %s",
+
+  "mhm2027.configuration.title": "Edge Configs",
+  "mhm2027.configuration.section.mhm2027.server.toml": "Edge Configs",
+  "mhm2027.configuration.section.mhm2027.server.toml.title": "Edge Configs",
+  "mhm2027.configuration.memory": "Memory",
+  "mhm2027.configuration.heat": "Heat",
+  "mhm2027.configuration.gcRateFullSaturation": "GC Rate at Full Saturation",
+  "mhm2027.configuration.gcRateZeroSaturation": "GC Rate at Zero Saturation",
+  "mhm2027.configuration.gcMinFoodLevel": "GC Minimum Food Level",
+  "mhm2027.configuration.heatCoolingPerSecond": "Heat Cooling per Second"
+}
