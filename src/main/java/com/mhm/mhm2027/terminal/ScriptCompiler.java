@@ -62,6 +62,60 @@ final class ScriptCompiler {
         return apis;
     }
 
+    // region Headers
+
+    private static final Set<String> PROGRAM_KEYS = Set.of("name", "type", "tops");
+    /** Extra header fields only presets may set: the gateway level they require, and a blurb. */
+    private static final Set<String> PRESET_KEYS = Set.of("level", "description");
+
+    record ProgramHeader(String name, ProgramType type, int tops) {
+    }
+
+    static ProgramHeader programHeader(LuaTable header, String file, boolean preset, int maxTops) throws InstallException {
+        checkKeys(header, preset ? union(PROGRAM_KEYS, PRESET_KEYS) : PROGRAM_KEYS);
+        String name = stringField(header, "name", file);
+        String typeId = stringField(header, "type", ProgramType.RESIDENT.id());
+        ProgramType type = ProgramType.byId(typeId).orElseThrow(() -> new InstallException("type must be resident, transient or query"));
+        int tops = intField(header, "tops", 1, 1, Math.max(1, maxTops));
+        return new ProgramHeader(name, type, tops);
+    }
+
+    static void checkKernelKeys(LuaTable header, boolean preset) throws InstallException {
+        checkKeys(header, preset ? union(KernelSettings.HEADER_KEYS, PRESET_KEYS) : KernelSettings.HEADER_KEYS);
+    }
+
+    static int presetLevel(LuaTable header) throws InstallException {
+        return intField(header, "level", 0, 0, 10);
+    }
+
+    static String presetDescription(LuaTable header) throws InstallException {
+        return stringField(header, "description", "");
+    }
+
+    /** Code RAM: a base by program type plus the footprint of every API used. */
+    static int programRam(ProgramType type, Set<ApiSpec> apis) {
+        return type.baseRamMb() + apis.stream().mapToInt(ApiSpec::ramMb).sum();
+    }
+
+    /** A kernel's hooks, refusing program events, which have no place in a kernel. */
+    static Map<String, LuaFunction> kernelHooks(LuaSandbox sandbox) throws InstallException {
+        Map<String, LuaFunction> hooks = handlers(sandbox, ScriptEvents.KERNEL_HOOKS);
+        for (String event : ScriptEvents.PROGRAM_EVENTS) {
+            if (!sandbox.globals().rawget(event).isNil()) {
+                throw new InstallException(event + " is a program event; kernels define hooks (" + String.join(", ", ScriptEvents.KERNEL_HOOKS) + ")");
+            }
+        }
+        return hooks;
+    }
+
+    private static Set<String> union(Set<String> a, Set<String> b) {
+        Set<String> all = new LinkedHashSet<>(a);
+        all.addAll(b);
+        return all;
+    }
+
+    // endregion
+
     /**
      * Compiles the source and runs its top-level code once. The header function
      * ({@code program} or {@code kernel}) is defined only for this run and must be called

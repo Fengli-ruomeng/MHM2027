@@ -1,20 +1,25 @@
 package com.mhm.mhm2027.network;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.item.ChipActions;
 import com.mhm.mhm2027.terminal.InstallException;
 import com.mhm.mhm2027.terminal.Kernel;
 import com.mhm.mhm2027.terminal.KernelSettings;
+import com.mhm.mhm2027.terminal.PresetRegistry;
 import com.mhm.mhm2027.terminal.Program;
 import com.mhm.mhm2027.terminal.ScriptStore;
 import com.mhm.mhm2027.terminal.Terminal;
 import com.mhm.mhm2027.terminal.Terminals;
 
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -86,6 +91,7 @@ public final class PanelService {
                     Kernel kernel = terminal.installKernel(name);
                     yield Component.translatable("mhm2027.panel.kernel_installed", kernel.name());
                 }
+                case BURN -> Component.translatable("mhm2027.panel.burned", ChipActions.burn(player, name));
                 default -> throw new IllegalStateException();
             };
             PacketDistributor.sendToPlayer(player, new PanelMessage(true, result));
@@ -131,16 +137,28 @@ public final class PanelService {
         Terminal terminal = Terminals.get(player);
         Kernel kernel = terminal.kernel();
         KernelSettings settings = kernel.settings();
+        PanelSnapshot.KernelInfo kernelInfo = new PanelSnapshot.KernelInfo(player.getData(ModAttachments.GATEWAY).kernel(),
+                kernel.name(), settings.schedule(), settings.gc(), settings.verify(), settings.rateLimit(),
+                kernel.hookNames(), kernel.ramMb(), kernel.topsReserve(), kernel.isPreset());
         List<PanelSnapshot.ProgramRow> programs = terminal.programs().stream()
-                .map(program -> new PanelSnapshot.ProgramRow(program.name(), program.type().id(), program.ramMb(), program.tops(),
-                        (float) program.averageTops(), (float) program.peakTops(), program.state(terminal.now())))
+                .map(program -> new PanelSnapshot.ProgramRow(program.id(), program.name(), program.type().id(), program.ramMb(),
+                        program.tops(), (float) program.averageTops(), (float) program.peakTops(), program.state(terminal.now()),
+                        program.isPreset()))
                 .toList();
-        List<PanelSnapshot.ScriptRow> scripts = ScriptStore.list(player.level().getServer(), player.getUUID()).stream()
-                .filter(entry -> entry.kind() != ScriptStore.Kind.UNKNOWN)
-                .map(entry -> new PanelSnapshot.ScriptRow(entry.name(), entry.kind() == ScriptStore.Kind.KERNEL))
-                .toList();
-        return new PanelSnapshot(kernel.name(), settings.schedule(), settings.gc(), settings.verify(), settings.rateLimit(),
-                kernel.hookNames(), kernel.ramMb(), kernel.topsReserve(), programs, scripts, terminal.log(),
+
+        // Storage: the player's own files, then the presets written into the gateway.
+        List<PanelSnapshot.ScriptRow> scripts = new ArrayList<>();
+        for (ScriptStore.Entry entry : ScriptStore.list(player.level().getServer(), player.getUUID())) {
+            if (entry.kind() != ScriptStore.Kind.UNKNOWN) {
+                scripts.add(new PanelSnapshot.ScriptRow(entry.name(), entry.name(), entry.kind() == ScriptStore.Kind.KERNEL, false));
+            }
+        }
+        for (Identifier id : player.getData(ModAttachments.PRESETS).ids()) {
+            PresetRegistry.get(id).ifPresent(preset -> scripts.add(
+                    new PanelSnapshot.ScriptRow(preset.terminalId(), preset.summary().name(), preset.isKernel(), true)));
+        }
+
+        return new PanelSnapshot(kernelInfo, programs, scripts, terminal.log(),
                 terminal.isRebooting() ? terminal.lockReason() : "", terminal.isRebooting() ? terminal.lockSecondsLeft() : 0);
     }
 }

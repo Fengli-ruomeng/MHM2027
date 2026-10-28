@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,6 +30,7 @@ public final class ScriptStore {
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_\\-]{1,32}");
     private static final Pattern HEADER = Pattern.compile("(?m)^\\s*(program|kernel)\\s*\\{");
     private static final long MAX_SIZE = 64 * 1024;
+    private static final int MAX_FILES = 64;
     private static final String EXAMPLES_ROOT = "/" + Mhm2027.MODID + "/example_scripts/";
     private static final List<String> EXAMPLES = List.of(
             "README.txt", "Adrenaline.lua", "Monitor.lua", "Status.lua", "Spinner.lua", "Bulwark.lua");
@@ -110,6 +112,44 @@ public final class ScriptStore {
             return Files.readString(file, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new InstallException("Couldn't read " + name + ".lua: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Writes code into the player's storage, as written from a chip. An existing file with the
+     * same name is never overwritten: the copy goes under {@code name_2}, {@code name_3}, ...
+     *
+     * @return the name it was saved under, or empty if identical code is already stored
+     */
+    public static Optional<String> writeCopy(MinecraftServer server, UUID player, String name, String source) throws InstallException {
+        if (!NAME.matcher(name).matches()) {
+            throw new InstallException("Script names may only use letters, digits, - and _ (up to 32)");
+        }
+        if (source.getBytes(StandardCharsets.UTF_8).length > MAX_SIZE) {
+            throw new InstallException(name + " is larger than 64 KB");
+        }
+        Path folder = ensureFolder(server, player);
+        try {
+            try (Stream<Path> files = Files.list(folder)) {
+                if (files.filter(file -> file.toString().endsWith(".lua")).count() >= MAX_FILES) {
+                    throw new InstallException("Your storage is full (" + MAX_FILES + " scripts)");
+                }
+            }
+            String base = name.length() > 29 ? name.substring(0, 29) : name;
+            for (int copy = 1; copy <= 9; copy++) {
+                String candidate = copy == 1 ? name : base + "_" + copy;
+                Path file = folder.resolve(candidate + ".lua");
+                if (!Files.exists(file)) {
+                    Files.writeString(file, source, StandardCharsets.UTF_8);
+                    return Optional.of(candidate);
+                }
+                if (Files.readString(file, StandardCharsets.UTF_8).equals(source)) {
+                    return Optional.empty();
+                }
+            }
+            throw new InstallException("Too many copies of " + name + " in your storage");
+        } catch (IOException e) {
+            throw new InstallException("Couldn't write " + name + ".lua: " + e.getMessage());
         }
     }
 

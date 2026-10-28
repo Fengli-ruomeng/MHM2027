@@ -55,6 +55,7 @@ public class EdgePanelScreen extends Screen {
     private static final int COLOR_OK = 0xFF55FF7F;
     private static final int COLOR_WARN = 0xFFFFC040;
     private static final int COLOR_ALERT = 0xFFFF5555;
+    private static final int COLOR_PRESET = 0xFFFFAA00;
     private static final int COLOR_BUTTON = 0xFF1C2733;
     private static final int COLOR_BUTTON_HOVER = 0xFF2B3D52;
     private static final int COLOR_BUTTON_DISABLED = 0xFF151B22;
@@ -200,7 +201,7 @@ public class EdgePanelScreen extends Screen {
                 new double[]{data.heat() / GatewayData.MAX_HEAT}, new int[]{COLOR_HEAT});
 
         y += 2;
-        text(graphics, Component.translatable("mhm2027.terminal.kernel_line", snapshot.kernelName(), snapshot.programs().size()), x, y, COLOR_TEXT);
+        text(graphics, Component.translatable("mhm2027.terminal.kernel_line", snapshot.kernel().name(), snapshot.programs().size()), x, y, COLOR_TEXT);
         y += ROW_HEIGHT;
         text(graphics, Component.translatable("mhm2027.terminal.slots", tier.standardSlots(), tier.overloadSlots(), tier.hookPoints()), x, y, COLOR_DIM);
         y += ROW_HEIGHT;
@@ -228,7 +229,7 @@ public class EdgePanelScreen extends Screen {
         }
         for (PanelSnapshot.ProgramRow program : snapshot.programs()) {
             rows.add((g, y, hover) -> {
-                text(g, clip(Component.literal(program.name()), 90), x + 4, y + 2, COLOR_TEXT);
+                text(g, clip(Component.literal(program.name()), 90), x + 4, y + 2, program.preset() ? COLOR_PRESET : COLOR_TEXT);
                 text(g, Component.literal(program.type() + "  " + formatMb(program.ramMb()) + "  " + program.tops()
                         + "  " + format(program.averageTops()) + "/" + format(program.peakTops())), x + 96, y + 2, COLOR_DIM);
                 Component state = stateLabel(program.state());
@@ -241,16 +242,20 @@ public class EdgePanelScreen extends Screen {
         rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.panel.storage"), x, y + 4, COLOR_ACCENT));
         List<PanelSnapshot.ScriptRow> runnable = snapshot.scripts().stream()
                 .filter(script -> !script.kernel())
-                .filter(script -> snapshot.programs().stream().noneMatch(program -> program.name().equals(script.name())))
+                .filter(script -> snapshot.programs().stream().noneMatch(program -> program.id().equals(script.id())))
                 .toList();
         if (runnable.isEmpty()) {
             rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.terminal.none"), x + 4, y + 2, COLOR_DIM));
         }
         for (PanelSnapshot.ScriptRow script : runnable) {
             rows.add((g, y, hover) -> {
-                text(g, Component.literal(script.name() + ".lua"), x + 4, y + 2, COLOR_TEXT);
+                storageLabel(g, script, x + 4, y + 2);
                 button(g, right - 36, y, 36, Component.translatable("mhm2027.panel.run"), !rebooting, hover,
-                        () -> send(PanelRequest.Action.START, script.name()));
+                        () -> send(PanelRequest.Action.START, script.id()));
+                if (!script.preset()) {
+                    button(g, right - 76, y, 38, Component.translatable("mhm2027.panel.burn"), true, hover,
+                            () -> send(PanelRequest.Action.BURN, script.id()));
+                }
             });
         }
 
@@ -276,33 +281,41 @@ public class EdgePanelScreen extends Screen {
         int right = left + panelWidth - PADDING;
         boolean rebooting = snapshot.rebooting();
 
+        PanelSnapshot.KernelInfo kernelInfo = snapshot.kernel();
         List<Row> rows = new ArrayList<>();
-        rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.panel.kernel_installed_label", snapshot.kernelName()), x, y + 2, COLOR_ACCENT));
+        rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.panel.kernel_installed_label", kernelInfo.name()), x, y + 2,
+                kernelInfo.preset() ? COLOR_PRESET : COLOR_ACCENT));
         rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.terminal.kernel_settings",
-                snapshot.schedule(), snapshot.gc(), snapshot.verify(), snapshot.rateLimit()), x + 4, y + 2, COLOR_TEXT));
+                kernelInfo.schedule(), kernelInfo.gc(), kernelInfo.verify(), kernelInfo.rateLimit()), x + 4, y + 2, COLOR_TEXT));
         rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.terminal.kernel_hooks",
-                snapshot.hooks().isEmpty() ? "-" : String.join(", ", snapshot.hooks())), x + 4, y + 2, COLOR_TEXT));
+                kernelInfo.hooks().isEmpty() ? "-" : String.join(", ", kernelInfo.hooks())), x + 4, y + 2, COLOR_TEXT));
         rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.terminal.kernel_cost",
-                formatMb(snapshot.kernelRamMb()), snapshot.kernelTops()), x + 4, y + 2, COLOR_DIM));
+                formatMb(kernelInfo.ramMb()), kernelInfo.tops()), x + 4, y + 2, COLOR_DIM));
 
         rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.panel.kernels_in_storage"), x, y + 4, COLOR_ACCENT));
-        List<String> kernels = new ArrayList<>();
-        kernels.add(GatewayData.DEFAULT_KERNEL);
-        snapshot.scripts().stream().filter(PanelSnapshot.ScriptRow::kernel).map(PanelSnapshot.ScriptRow::name)
-                .filter(name -> !name.equals(GatewayData.DEFAULT_KERNEL)).forEach(kernels::add);
-        for (String kernel : kernels) {
-            boolean installed = kernel.equals(snapshot.kernelName());
+        List<PanelSnapshot.ScriptRow> kernels = new ArrayList<>();
+        kernels.add(new PanelSnapshot.ScriptRow(GatewayData.DEFAULT_KERNEL, GatewayData.DEFAULT_KERNEL, true, false));
+        snapshot.scripts().stream().filter(PanelSnapshot.ScriptRow::kernel)
+                .filter(script -> !script.id().equals(GatewayData.DEFAULT_KERNEL)).forEach(kernels::add);
+        for (PanelSnapshot.ScriptRow kernel : kernels) {
+            boolean builtin = kernel.id().equals(GatewayData.DEFAULT_KERNEL);
+            boolean installed = kernel.id().equals(kernelInfo.id());
             rows.add((g, y, hover) -> {
-                Component label = kernel.equals(GatewayData.DEFAULT_KERNEL)
-                        ? Component.translatable("mhm2027.panel.builtin", kernel)
-                        : Component.literal(kernel + ".lua");
-                text(g, label, x + 4, y + 2, installed ? COLOR_OK : COLOR_TEXT);
+                if (builtin) {
+                    text(g, Component.translatable("mhm2027.panel.builtin", kernel.name()), x + 4, y + 2, installed ? COLOR_OK : COLOR_TEXT);
+                } else {
+                    storageLabel(g, kernel, x + 4, y + 2);
+                }
                 if (installed) {
                     Component tag = Component.translatable("mhm2027.panel.installed");
                     text(g, tag, right - font.width(tag), y + 2, COLOR_OK);
                 } else {
                     button(g, right - 44, y, 44, Component.translatable("mhm2027.panel.install"), !rebooting, hover,
-                            () -> send(PanelRequest.Action.INSTALL_KERNEL, kernel));
+                            () -> send(PanelRequest.Action.INSTALL_KERNEL, kernel.id()));
+                }
+                if (!builtin && !kernel.preset()) {
+                    button(g, right - 86, y, 38, Component.translatable("mhm2027.panel.burn"), true, hover,
+                            () -> send(PanelRequest.Action.BURN, kernel.id()));
                 }
             });
         }
@@ -365,6 +378,16 @@ public class EdgePanelScreen extends Screen {
             int thumbY = listTop + (trackHeight - thumbHeight) * scroll / (rows.size() - visible);
             graphics.fill(trackX, listTop, trackX + 2, listTop + trackHeight, COLOR_BAR_BACK);
             graphics.fill(trackX, thumbY, trackX + 2, thumbY + thumbHeight, COLOR_BORDER);
+        }
+    }
+
+    /** A storage entry's name: own files as name.lua, presets in gold with a tag. */
+    private void storageLabel(GuiGraphicsExtractor graphics, PanelSnapshot.ScriptRow script, int x, int y) {
+        if (script.preset()) {
+            text(graphics, Component.literal(script.name()), x, y, COLOR_PRESET);
+            text(graphics, Component.translatable("mhm2027.panel.preset_tag"), x + font.width(script.name()) + 4, y, COLOR_DIM);
+        } else {
+            text(graphics, Component.literal(script.name() + ".lua"), x, y, COLOR_TEXT);
         }
     }
 

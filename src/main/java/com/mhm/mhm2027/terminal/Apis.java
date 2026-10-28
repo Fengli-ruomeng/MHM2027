@@ -240,7 +240,8 @@ final class Apis {
         }
         ServerPlayer player = player(terminal);
         GatewayTier tier = Terminal.data(player).tier();
-        if (spec.minLevel() > tier.level()) {
+        // Preset code keeps its privilege bypass: it may call APIs above the player's level.
+        if (spec.minLevel() > Math.max(tier.level(), caller.privilegeLevel())) {
             throw new LuaError(spec.id() + " needs gateway LV" + spec.minLevel());
         }
         caller.sandbox().charge(spec.steps() * ApiSpec.STEP_INSTRUCTIONS);

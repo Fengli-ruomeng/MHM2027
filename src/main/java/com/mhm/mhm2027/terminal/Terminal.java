@@ -71,11 +71,12 @@ public final class Terminal {
     // region Lifecycle
 
     /**
-     * Loads, checks and starts a script from the script folder.
+     * Loads, checks and starts a program from storage: a file name, or {@code preset:<id>} for
+     * a preset written into the gateway.
      *
      * @throws InstallException with a player-facing reason if it can't start
      */
-    public Program start(String file) throws InstallException {
+    public Program start(String id) throws InstallException {
         ServerPlayer player = requirePlayer();
         GatewayTier tier = data(player).tier();
         if (tier.isNull()) {
@@ -85,7 +86,15 @@ public final class Terminal {
             throw new InstallException("The terminal is rebooting (" + lockReason + ")");
         }
 
-        Program program = new Program(this, file, ScriptStore.read(server, owner, file), tier.level(), tier.tops());
+        Program program;
+        if (id.startsWith(PresetRegistry.PREFIX)) {
+            PresetRegistry.Preset preset = installedPreset(player, id, false);
+            // Locked code runs at the preset's privilege, so install checks use that level too.
+            program = new Program(this, id, preset.chunk(), preset.source(), Math.max(tier.level(), preset.privilegeLevel()),
+                    tier.tops(), preset.privilegeLevel());
+        } else {
+            program = new Program(this, id, id, ScriptStore.read(server, owner, id), tier.level(), tier.tops(), -1);
+        }
         if (find(program.name()).isPresent()) {
             throw new InstallException(program.name() + " is already running");
         }
@@ -138,7 +147,7 @@ public final class Terminal {
      * Swaps the kernel. This reboots the terminal and takes longer than a normal reboot,
      * with a heavier debuff while the new kernel comes up.
      */
-    public Kernel installKernel(String file) throws InstallException {
+    public Kernel installKernel(String id) throws InstallException {
         ServerPlayer player = requirePlayer();
         GatewayTier tier = data(player).tier();
         if (tier.isNull()) {
@@ -147,13 +156,11 @@ public final class Terminal {
         if (isRebooting()) {
             throw new InstallException("The terminal is rebooting (" + lockReason + ")");
         }
-        Kernel next = file.equals(GatewayData.DEFAULT_KERNEL)
-                ? Kernel.baseline()
-                : Kernel.load(this, file, ScriptStore.read(server, owner, file), tier.level(), tier.hookPoints());
+        Kernel next = loadKernel(player, id);
 
         stopAllSilently();
         kernel = next;
-        data(player).setKernel(next.isBaseline() ? GatewayData.DEFAULT_KERNEL : file);
+        data(player).setKernel(next.isBaseline() ? GatewayData.DEFAULT_KERNEL : id);
         lock("kernel swap", KERNEL_SWAP_LOCK_TICKS);
         applyDowntimeDebuff(player, KERNEL_SWAP_LOCK_TICKS, true);
         updateUsage(player);
@@ -439,17 +446,49 @@ public final class Terminal {
 
     private Kernel loadSavedKernel(ServerPlayer player) {
         GatewayData data = data(player);
-        String file = data.kernel();
-        if (file.equals(GatewayData.DEFAULT_KERNEL) || data.tier().isNull()) {
+        String id = data.kernel();
+        if (data.tier().isNull()) {
             return Kernel.baseline();
         }
         try {
-            return Kernel.load(this, file, ScriptStore.read(server, owner, file), data.tier().level(), data.tier().hookPoints());
+            return loadKernel(player, id);
         } catch (InstallException e) {
-            log("kernel", "couldn't load " + file + " (" + e.getMessage() + "); using " + GatewayData.DEFAULT_KERNEL);
+            log("kernel", "couldn't load " + id + " (" + e.getMessage() + "); using " + GatewayData.DEFAULT_KERNEL);
             data.setKernel(GatewayData.DEFAULT_KERNEL);
             return Kernel.baseline();
         }
+    }
+
+    /** "Baseline", a file in storage, or {@code preset:<id>} for a preset kernel in the gateway. */
+    private Kernel loadKernel(ServerPlayer player, String id) throws InstallException {
+        GatewayTier tier = data(player).tier();
+        if (id.equals(GatewayData.DEFAULT_KERNEL)) {
+            return Kernel.baseline();
+        }
+        if (id.startsWith(PresetRegistry.PREFIX)) {
+            PresetRegistry.Preset preset = installedPreset(player, id, true);
+            int privilege = preset.privilegeLevel();
+            return Kernel.load(this, preset.chunk(), preset.source(), Math.max(tier.level(), privilege),
+                    Math.max(tier.hookPoints(), GatewayTier.of(privilege).hookPoints()), privilege);
+        }
+        return Kernel.load(this, id, ScriptStore.read(server, owner, id), tier.level(), tier.hookPoints(), -1);
+    }
+
+    /** A preset the player has written into their gateway, checked against their level. */
+    private PresetRegistry.Preset installedPreset(ServerPlayer player, String id, boolean kernel) throws InstallException {
+        PresetRegistry.Preset preset = PresetRegistry.byTerminalId(id)
+                .orElseThrow(() -> new InstallException("Unknown preset " + id + " (was its datapack removed?)"));
+        if (!player.getData(ModAttachments.PRESETS).contains(preset.id())) {
+            throw new InstallException(preset.summary().name() + " isn't in your gateway; write its chip first");
+        }
+        if (preset.isKernel() != kernel) {
+            throw new InstallException(preset.summary().name() + (kernel ? " is a program, not a kernel" : " is a kernel; install it from the Kernel tab"));
+        }
+        int level = data(player).tier().level();
+        if (level < preset.level()) {
+            throw new InstallException(preset.summary().name() + " requires gateway LV" + preset.level() + " (you are LV" + level + ")");
+        }
+        return preset;
     }
 
     private record TimedModifier(Holder<Attribute> attribute, Identifier id, long expiresAt) {

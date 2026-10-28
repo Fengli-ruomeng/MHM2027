@@ -22,25 +22,25 @@ import org.squiddev.cobalt.function.LuaFunction;
  * paused mid-function and resumed next tick. A bad loop only slows itself.
  */
 public final class Program implements ScriptHost {
-    public static final String ON_START = "on_start";
-    public static final String ON_STOP = "on_stop";
-    public static final String ON_RUN = "on_run";
-    public static final String ON_TIMER = "on_timer";
-    public static final String ON_HIT_TAKEN = "on_hit_taken";
-    public static final String ON_HIT_DEALT = "on_hit_dealt";
-    public static final String ON_KILL = "on_kill";
-    static final List<String> EVENTS = List.of(ON_START, ON_STOP, ON_RUN, ON_TIMER, ON_HIT_TAKEN, ON_HIT_DEALT, ON_KILL);
+    public static final String ON_START = ScriptEvents.ON_START;
+    public static final String ON_STOP = ScriptEvents.ON_STOP;
+    public static final String ON_RUN = ScriptEvents.ON_RUN;
+    public static final String ON_TIMER = ScriptEvents.ON_TIMER;
+    public static final String ON_HIT_TAKEN = ScriptEvents.ON_HIT_TAKEN;
+    public static final String ON_HIT_DEALT = ScriptEvents.ON_HIT_DEALT;
+    public static final String ON_KILL = ScriptEvents.ON_KILL;
 
-    private static final Set<String> HEADER_KEYS = Set.of("name", "type", "tops");
     private static final int MAX_QUEUED_EVENTS = 8;
     private static final int MIN_TIMER_TICKS = 5;
     private static final int PEAK_WINDOW_TICKS = 100;
 
+    private final String id;
     private final String name;
     private final ProgramType type;
     private final int tops;
     private final int ramMb;
     private final boolean needsSlot;
+    private final int privilegeLevel;
     private final LuaSandbox sandbox;
     private final Map<String, LuaFunction> handlers;
     private final Deque<QueuedEvent> queue = new ArrayDeque<>();
@@ -61,27 +61,31 @@ public final class Program implements ScriptHost {
     /**
      * Loads and checks a program. Nothing runs in the world until {@link #begin}.
      *
-     * @param level the gateway level the install checks run against
+     * @param id             what started it: a file name, or {@code preset:<id>}
+     * @param chunk          the name errors are reported against
+     * @param level          the gateway level the install checks run against
+     * @param privilegeLevel for a preset, the level its locked code runs at; -1 for your own code
      */
-    Program(Terminal terminal, String file, String source, int level, int maxTops) throws InstallException {
+    Program(Terminal terminal, String id, String chunk, String source, int level, int maxTops, int privilegeLevel) throws InstallException {
         try {
             sandbox = new LuaSandbox();
         } catch (LuaError e) {
             throw new InstallException("Couldn't create the Lua runtime: " + e.getMessage());
         }
+        this.id = id;
+        this.privilegeLevel = privilegeLevel;
         Apis.bindProgram(sandbox, terminal, this);
 
-        LuaTable header = ScriptCompiler.load(sandbox, file, source, "program", "kernel");
-        ScriptCompiler.checkKeys(header, HEADER_KEYS);
-        name = ScriptCompiler.stringField(header, "name", file);
-        String typeId = ScriptCompiler.stringField(header, "type", ProgramType.RESIDENT.id());
-        type = ProgramType.byId(typeId).orElseThrow(() -> new InstallException("type must be resident, transient or query"));
-        tops = ScriptCompiler.intField(header, "tops", 1, 1, Math.max(1, maxTops));
+        LuaTable header = ScriptCompiler.load(sandbox, chunk, source, "program", "kernel");
+        ScriptCompiler.ProgramHeader parsed = ScriptCompiler.programHeader(header, chunk, isPreset(), maxTops);
+        name = parsed.name();
+        type = parsed.type();
+        tops = parsed.tops();
 
         Set<ApiSpec> apis = ScriptCompiler.scanApis(source, false, type, level);
-        ramMb = type.baseRamMb() + apis.stream().mapToInt(ApiSpec::ramMb).sum();
+        ramMb = ScriptCompiler.programRam(type, apis);
         needsSlot = apis.stream().anyMatch(ApiSpec::needsSlot);
-        handlers = ScriptCompiler.handlers(sandbox, EVENTS);
+        handlers = ScriptCompiler.handlers(sandbox, ScriptEvents.PROGRAM_EVENTS);
     }
 
     /** Starts the program: residents get on_start, others get on_run. */
@@ -208,6 +212,21 @@ public final class Program implements ScriptHost {
     @Override
     public boolean isKernel() {
         return false;
+    }
+
+    @Override
+    public int privilegeLevel() {
+        return privilegeLevel;
+    }
+
+    /** Locked preset code, installed from a preset chip. */
+    public boolean isPreset() {
+        return privilegeLevel >= 0;
+    }
+
+    /** What started it: a file name in storage, or {@code preset:<id>}. */
+    public String id() {
+        return id;
     }
 
     @Override

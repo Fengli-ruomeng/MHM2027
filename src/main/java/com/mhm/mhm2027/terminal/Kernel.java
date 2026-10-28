@@ -19,37 +19,41 @@ import com.mhm.mhm2027.gateway.GatewayData;
  * fails or runs over gets its default behaviour instead.
  */
 public final class Kernel implements ScriptHost {
-    public static final String ON_ACCESS_REQUEST = "on_access_request";
-    public static final String ON_SESSION_OPENED = "on_session_opened";
-    public static final String ON_LOW_RAM = "on_low_ram";
-    public static final String ON_PANIC = "on_panic";
-    static final List<String> HOOKS = List.of(ON_ACCESS_REQUEST, ON_SESSION_OPENED, ON_LOW_RAM, ON_PANIC);
+    public static final String ON_ACCESS_REQUEST = ScriptEvents.ON_ACCESS_REQUEST;
+    public static final String ON_SESSION_OPENED = ScriptEvents.ON_SESSION_OPENED;
+    public static final String ON_LOW_RAM = ScriptEvents.ON_LOW_RAM;
+    public static final String ON_PANIC = ScriptEvents.ON_PANIC;
 
-    /** TOPS always held for hook work, so a busy fight never starves the kernel. */
-    private static final int HOOK_RESERVE_TOPS = 2;
     private static final int HOOK_INSTRUCTIONS = 2_000;
-    private static final int BASE_RAM_MB = 8;
-    private static final int RAM_PER_HOOK_MB = 2;
 
     private final String name;
     private final KernelSettings settings;
     private final Map<String, LuaFunction> hooks;
     private final @Nullable LuaSandbox sandbox;
+    private final int privilegeLevel;
     private boolean active;
 
-    private Kernel(String name, KernelSettings settings, Map<String, LuaFunction> hooks, @Nullable LuaSandbox sandbox) {
+    private Kernel(String name, KernelSettings settings, Map<String, LuaFunction> hooks, @Nullable LuaSandbox sandbox, int privilegeLevel) {
         this.name = name;
         this.settings = settings;
         this.hooks = hooks;
         this.sandbox = sandbox;
+        this.privilegeLevel = privilegeLevel;
     }
 
     /** The built-in kernel: default settings, no hooks. Every gateway starts with it. */
     public static Kernel baseline() {
-        return new Kernel(GatewayData.DEFAULT_KERNEL, KernelSettings.DEFAULT, Map.of(), null);
+        return new Kernel(GatewayData.DEFAULT_KERNEL, KernelSettings.DEFAULT, Map.of(), null, -1);
     }
 
-    static Kernel load(Terminal terminal, String file, String source, int level, int hookPoints) throws InstallException {
+    /**
+     * Loads and checks a kernel script.
+     *
+     * @param level          the gateway level API checks run against
+     * @param hookPoints     how many hooks it may define
+     * @param privilegeLevel for a preset kernel, the level its locked code runs at; -1 for your own
+     */
+    static Kernel load(Terminal terminal, String chunk, String source, int level, int hookPoints, int privilegeLevel) throws InstallException {
         LuaSandbox sandbox;
         try {
             sandbox = new LuaSandbox();
@@ -59,23 +63,18 @@ public final class Kernel implements ScriptHost {
         Kernel[] self = new Kernel[1];
         Apis.bindKernel(sandbox, terminal, () -> self[0]);
 
-        LuaTable header = ScriptCompiler.load(sandbox, file, source, "kernel", "program");
-        ScriptCompiler.checkKeys(header, KernelSettings.HEADER_KEYS);
-        String name = ScriptCompiler.stringField(header, "name", file);
+        LuaTable header = ScriptCompiler.load(sandbox, chunk, source, "kernel", "program");
+        ScriptCompiler.checkKernelKeys(header, privilegeLevel >= 0);
+        String name = ScriptCompiler.stringField(header, "name", chunk);
         KernelSettings settings = KernelSettings.fromHeader(header);
         ScriptCompiler.scanApis(source, true, null, level);
 
-        Map<String, LuaFunction> hooks = ScriptCompiler.handlers(sandbox, HOOKS);
-        for (String event : Program.EVENTS) {
-            if (!sandbox.globals().rawget(event).isNil()) {
-                throw new InstallException(event + " is a program event; kernels define hooks (" + String.join(", ", HOOKS) + ")");
-            }
-        }
+        Map<String, LuaFunction> hooks = ScriptCompiler.kernelHooks(sandbox);
         if (hooks.size() > hookPoints) {
             throw new InstallException("This kernel defines " + hooks.size() + " hooks, but your gateway has " + hookPoints + " hook points");
         }
 
-        self[0] = new Kernel(name, settings, hooks, sandbox);
+        self[0] = new Kernel(name, settings, hooks, sandbox, privilegeLevel);
         self[0].active = true;
         return self[0];
     }
@@ -117,12 +116,16 @@ public final class Kernel implements ScriptHost {
         return sandbox == null;
     }
 
+    public boolean isPreset() {
+        return privilegeLevel >= 0;
+    }
+
     public int ramMb() {
-        return BASE_RAM_MB + RAM_PER_HOOK_MB * hooks.size();
+        return KernelSettings.ramFor(hooks.size());
     }
 
     public int topsReserve() {
-        return HOOK_RESERVE_TOPS + settings.gcTops();
+        return settings.topsReserve();
     }
 
     @Override
@@ -143,5 +146,10 @@ public final class Kernel implements ScriptHost {
     @Override
     public boolean isActive() {
         return active;
+    }
+
+    @Override
+    public int privilegeLevel() {
+        return privilegeLevel;
     }
 }

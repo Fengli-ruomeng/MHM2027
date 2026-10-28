@@ -14,6 +14,21 @@ public record KernelSettings(String schedule, String gc, String verify, int rate
     public static final KernelSettings DEFAULT = new KernelSettings("fair", "normal", "full", 4);
 
     static final Set<String> HEADER_KEYS = Set.of("name", "schedule", "gc", "verify", "rate_limit");
+
+    /** TOPS always held for hook work, so a busy fight never starves the kernel. */
+    private static final int HOOK_RESERVE_TOPS = 2;
+    private static final int BASE_RAM_MB = 8;
+    private static final int RAM_PER_HOOK_MB = 2;
+
+    /** Kernel RAM: a base plus a little per hook. */
+    static int ramFor(int hooks) {
+        return BASE_RAM_MB + RAM_PER_HOOK_MB * hooks;
+    }
+
+    /** TOPS the kernel holds: the hook reserve plus whatever garbage collection costs. */
+    public int topsReserve() {
+        return HOOK_RESERVE_TOPS + gcTops();
+    }
     private static final List<String> SCHEDULES = List.of("fair", "priority");
     private static final List<String> GC_MODES = List.of("lazy", "normal", "aggressive");
     private static final List<String> VERIFY_MODES = List.of("full", "fast", "skip");

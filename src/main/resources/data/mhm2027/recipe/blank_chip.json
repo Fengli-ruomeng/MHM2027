@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": "minecraft:copper_ingot",
+    "R": "minecraft:redstone",
+    "G": "minecraft:gold_nugget"
+  },
+  "pattern": [
+    "CRC",
+    "GGG"
+  ],
+  "result": {
+    "id": "mhm2027:blank_chip",
+    "count": 2
+  }
+}

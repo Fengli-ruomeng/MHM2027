@@ -45,6 +45,10 @@ public final class Terminals {
         return Terminal.data(player).tier().isNull();
     }
 
+    public static int level(ServerPlayer player) {
+        return Terminal.data(player).level();
+    }
+
     public static Optional<Terminal> existing(ServerPlayer player) {
         return Optional.ofNullable(TERMINALS.get(player.getUUID()));
     }

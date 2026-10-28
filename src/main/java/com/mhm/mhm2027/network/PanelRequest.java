@@ -21,7 +21,9 @@ public record PanelRequest(Action action, String argument) implements CustomPack
         START,
         STOP,
         REBOOT,
-        INSTALL_KERNEL
+        INSTALL_KERNEL,
+        /** Copy a stored file onto a blank chip from the inventory. */
+        BURN
     }
 
     public static final Type<PanelRequest> TYPE = new Type<>(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "panel_request"));

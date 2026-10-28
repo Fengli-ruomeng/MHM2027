@@ -20,4 +20,11 @@ public class ModAttachments {
             .sync((holder, to) -> holder == to, GatewayData.STREAM_CODEC)
             .copyOnDeath()
             .build());
+
+    /** Presets written into the gateway. Server only: the panel gets them through its snapshots. */
+    public static final Supplier<AttachmentType<InstalledPresets>> PRESETS = ATTACHMENT_TYPES.register("presets", () -> AttachmentType
+            .builder(() -> InstalledPresets.EMPTY)
+            .serialize(InstalledPresets.CODEC.fieldOf("presets"))
+            .copyOnDeath()
+            .build());
 }
