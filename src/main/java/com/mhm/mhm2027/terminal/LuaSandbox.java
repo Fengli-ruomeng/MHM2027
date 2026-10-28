@@ -5,6 +5,7 @@ import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
 import org.squiddev.cobalt.LuaTable;
 import org.squiddev.cobalt.LuaThread;
+import org.squiddev.cobalt.LuaUserdata;
 import org.squiddev.cobalt.LuaValue;
 import org.squiddev.cobalt.UnwindThrowable;
 import org.squiddev.cobalt.ValueFactory;
@@ -39,7 +40,7 @@ public final class LuaSandbox {
     /** Longest string string.rep may build, so one call can't exhaust server memory. */
     private static final int MAX_REP_LENGTH = 1 << 20;
 
-    private static final LuaValue SLEEP_MARKER = ValueFactory.valueOf("edge:sleep");
+    private static final LuaValue AWAIT_MARKER = ValueFactory.valueOf("edge:await");
 
     private final LuaState state;
     private final DebugHook budgetHook = new DebugHook() {
@@ -100,14 +101,17 @@ public final class LuaSandbox {
         Varargs result = LuaThread.run(thread, args);
         int used = Math.max(0, instructions - Math.max(budget, 0));
         if (thread.getStatus() == LuaThread.Status.DEAD) {
-            return new Slice(Slice.Kind.FINISHED, used, 0, result);
+            return new Slice(Slice.Kind.FINISHED, used, null, result);
         }
         if (result == null) {
-            return new Slice(Slice.Kind.PAUSED, instructions, 0, Constants.NONE);
+            return new Slice(Slice.Kind.PAUSED, instructions, null, Constants.NONE);
         }
-        // The only way to yield to us is sys.sleep, which yields (marker, seconds).
-        double seconds = SLEEP_MARKER.equals(result.first()) ? result.arg(2).toDouble() : 0;
-        return new Slice(Slice.Kind.SLEEPING, used, seconds, Constants.NONE);
+        // The only way to yield to us is an await function, which yields (marker, awaitable).
+        if (AWAIT_MARKER.equals(result.first()) && result.arg(2) instanceof LuaUserdata userdata
+                && userdata.toUserdata() instanceof Awaitable awaitable) {
+            return new Slice(Slice.Kind.AWAITING, used, awaitable, Constants.NONE);
+        }
+        throw new LuaError("unexpected yield");
     }
 
     /** A named Lua function backed by Java. */
@@ -115,27 +119,70 @@ public final class LuaSandbox {
         return RegisteredFunction.ofV(name, body).create();
     }
 
-    /** A function that suspends the calling program for some seconds. Bound as sys.sleep. */
-    public static LibFunction sleepFunction(SleepGuard guard) {
-        return new ResumableVarArgFunction<Void>() {
+    /**
+     * Something a program waits for: a timer, a scan, an access attempt. The program is
+     * suspended mid-call until it completes, then the call returns {@link #result()}.
+     */
+    public interface Awaitable {
+        /** Called once per tick while the program waits; true once it has finished. */
+        boolean tick();
+
+        /** What the waiting call returns. */
+        Varargs result();
+
+        /** How the panel describes a program waiting on this. */
+        default String state() {
+            return "waiting";
+        }
+    }
+
+    @FunctionalInterface
+    public interface AwaitStarter {
+        Awaitable start(Varargs args) throws LuaError;
+    }
+
+    /**
+     * A Lua function that suspends the calling program until the Java side finishes. Bound as
+     * sys.sleep, remote.inspect and later remote.access.
+     */
+    public static LibFunction awaitFunction(String name, AwaitStarter starter) {
+        LibFunction function = new ResumableVarArgFunction<Void>() {
             @Override
             protected Varargs invoke(LuaState state, DebugFrame di, Varargs args) throws LuaError, UnwindThrowable {
-                double seconds = args.arg(1).checkDouble();
-                guard.check(seconds);
-                return LuaThread.yield(state, ValueFactory.varargsOf(SLEEP_MARKER, ValueFactory.valueOf(seconds)));
+                Awaitable awaitable = starter.start(args);
+                return LuaThread.yield(state, ValueFactory.varargsOf(AWAIT_MARKER, new LuaUserdata(awaitable)));
             }
 
             @Override
             public Varargs resume(LuaState state, Void object, Varargs value) {
-                return Constants.NONE;
+                return value;
             }
         };
+        return RegisteredFunction.ofFactory(name, () -> function).create();
     }
 
-    /** Lets the caller refuse a sleep, for example inside a kernel hook. */
-    @FunctionalInterface
-    public interface SleepGuard {
-        void check(double seconds) throws LuaError;
+    /** Waits a number of ticks. Behind sys.sleep. */
+    public static final class Timer implements Awaitable {
+        private int ticksLeft;
+
+        public Timer(double seconds) {
+            ticksLeft = Math.max(1, (int) Math.round(seconds * 20));
+        }
+
+        @Override
+        public boolean tick() {
+            return --ticksLeft <= 0;
+        }
+
+        @Override
+        public Varargs result() {
+            return Constants.NONE;
+        }
+
+        @Override
+        public String state() {
+            return "sleeping";
+        }
     }
 
     private void capStringRep(LuaTable globals) throws LuaError {
@@ -157,18 +204,18 @@ public final class LuaSandbox {
     /**
      * The outcome of one {@link #run}.
      *
-     * @param used    instructions spent
-     * @param seconds how long to sleep, for {@link Kind#SLEEPING}
-     * @param result  return values, for {@link Kind#FINISHED}
+     * @param used      instructions spent
+     * @param awaitable what the script is waiting for, for {@link Kind#AWAITING}
+     * @param result    return values, for {@link Kind#FINISHED}
      */
-    public record Slice(Kind kind, int used, double seconds, Varargs result) {
+    public record Slice(Kind kind, int used, Awaitable awaitable, Varargs result) {
         public enum Kind {
             /** The function returned. */
             FINISHED,
             /** The budget ran out; resume next tick. */
             PAUSED,
-            /** The script called sys.sleep. */
-            SLEEPING
+            /** The script called an await function (sys.sleep, remote.inspect, ...). */
+            AWAITING
         }
     }
 }

@@ -129,6 +129,8 @@ dependencies {
     // Plain unit tests for logic that doesn't need a running game (the Lua sandbox, install checks).
     testImplementation platform("org.junit:junit-bom:5.11.4")
     testImplementation "org.junit.jupiter:junit-jupiter"
+    // The game ships Gson; tests need their own copy to parse the datapack JSON they check.
+    testImplementation "com.google.code.gson:gson:2.11.0"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 
     // Example optional mod dependency with JEI

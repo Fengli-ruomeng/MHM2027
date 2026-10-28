@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
+import org.jspecify.annotations.Nullable;
 import org.squiddev.cobalt.Constants;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaTable;
@@ -49,7 +50,7 @@ public final class Program implements ScriptHost {
     private boolean stopRequested;
     private LuaThread current;
     private Varargs currentArgs = Constants.NONE;
-    private long sleepUntil;
+    private LuaSandbox.@Nullable Awaitable awaiting;
     private int timerTicks;
     private long nextTimer;
     private boolean pausedLastTick;
@@ -128,6 +129,16 @@ public final class Program implements ScriptHost {
             nextTimer = now + timerTicks;
         }
 
+        // A program waiting on a call (sleep, scan, access) does nothing else until it returns.
+        if (awaiting != null) {
+            if (!awaiting.tick()) {
+                recordUsage(0);
+                return true;
+            }
+            currentArgs = awaiting.result();
+            awaiting = null;
+        }
+
         int budget = tops * instructionsPerTops;
         int used = 0;
         pausedLastTick = false;
@@ -140,8 +151,6 @@ public final class Program implements ScriptHost {
                     }
                     current = sandbox.newThread(handlers.get(event.name()));
                     currentArgs = event.args().get();
-                } else if (sleepUntil > now) {
-                    break;
                 }
 
                 LuaSandbox.Slice slice = sandbox.run(current, currentArgs, budget - used);
@@ -149,8 +158,8 @@ public final class Program implements ScriptHost {
                 used += slice.used();
                 if (slice.kind() == LuaSandbox.Slice.Kind.FINISHED) {
                     current = null;
-                } else if (slice.kind() == LuaSandbox.Slice.Kind.SLEEPING) {
-                    sleepUntil = now + Math.max(1, Math.round(slice.seconds() * 20));
+                } else if (slice.kind() == LuaSandbox.Slice.Kind.AWAITING) {
+                    awaiting = slice.awaitable();
                     break;
                 } else {
                     pausedLastTick = true;
@@ -258,13 +267,13 @@ public final class Program implements ScriptHost {
         return Math.max(peakTops, windowPeak);
     }
 
-    /** idle, running, sleeping or paused, for the ps view. */
+    /** idle, running, sleeping, waiting or paused, for the ps view. */
     public String state(long now) {
         if (current == null) {
             return "idle";
         }
-        if (sleepUntil > now) {
-            return "sleeping";
+        if (awaiting != null) {
+            return awaiting.state();
         }
         return pausedLastTick ? "paused (over budget)" : "running";
     }

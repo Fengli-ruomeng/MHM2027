@@ -127,5 +127,6 @@
   "mhm2027.editor.unsaved_title": "未保存的更改",
   "mhm2027.editor.unsaved_message": "放弃对 %s 的更改？",
   "mhm2027.editor.delete_title": "删除脚本",
-  "mhm2027.editor.delete_message": "从存储中删除 %s？此操作无法撤销。"
+  "mhm2027.editor.delete_message": "从存储中删除 %s？此操作无法撤销。",
+  "mhm2027.panel.state.waiting": "等待中"
 }

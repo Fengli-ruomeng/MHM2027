@@ -52,10 +52,9 @@ class LuaSandboxTest {
     }
 
     @Test
-    void sleepYieldsToTheTerminalAndResumes() throws Exception {
+    void sleepWaitsTheRightNumberOfTicksThenResumes() throws Exception {
         LuaSandbox sandbox = new LuaSandbox();
-        sandbox.globals().rawset("sleep", LuaSandbox.sleepFunction(seconds -> {
-        }));
+        sandbox.globals().rawset("sleep", LuaSandbox.awaitFunction("sleep", args -> new LuaSandbox.Timer(args.arg(1).checkDouble())));
         LuaThread thread = sandbox.newThread(compile(sandbox, """
                 local before = 1
                 sleep(1.5)
@@ -63,12 +62,41 @@ class LuaSandboxTest {
                 """));
 
         LuaSandbox.Slice first = sandbox.run(thread, Constants.NONE, 1000);
-        assertEquals(LuaSandbox.Slice.Kind.SLEEPING, first.kind());
-        assertEquals(1.5, first.seconds());
+        assertEquals(LuaSandbox.Slice.Kind.AWAITING, first.kind());
+        int ticks = 1;
+        while (!first.awaitable().tick()) {
+            ticks++;
+        }
+        assertEquals(30, ticks, "1.5 s is 30 ticks");
 
-        LuaSandbox.Slice second = sandbox.run(thread, Constants.NONE, 1000);
+        LuaSandbox.Slice second = sandbox.run(thread, first.awaitable().result(), 1000);
         assertEquals(LuaSandbox.Slice.Kind.FINISHED, second.kind());
         assertEquals(42, second.result().first().checkInteger());
+    }
+
+    @Test
+    void awaitedCallsReturnTheirResultToTheScript() throws Exception {
+        LuaSandbox sandbox = new LuaSandbox();
+        sandbox.globals().rawset("fetch", LuaSandbox.awaitFunction("fetch", args -> new LuaSandbox.Awaitable() {
+            private int ticks;
+
+            @Override
+            public boolean tick() {
+                return ++ticks >= 3;
+            }
+
+            @Override
+            public org.squiddev.cobalt.Varargs result() {
+                return org.squiddev.cobalt.ValueFactory.valueOf("scan done");
+            }
+        }));
+        LuaThread thread = sandbox.newThread(compile(sandbox, "return fetch() .. '!'"));
+        LuaSandbox.Slice waiting = sandbox.run(thread, Constants.NONE, 1000);
+        while (!waiting.awaitable().tick()) {
+            // the terminal ticks the awaitable until it finishes
+        }
+        LuaSandbox.Slice done = sandbox.run(thread, waiting.awaitable().result(), 1000);
+        assertEquals("scan done!", done.result().first().toString());
     }
 
     @Test

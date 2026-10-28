@@ -202,18 +202,33 @@ final class Apis {
             log(terminal, host.get(), args);
             return Constants.NONE;
         });
-        // sys.sleep yields back to the terminal, so it's bound separately from the plain functions.
-        sys.rawset(ApiSpec.SYS_SLEEP.member(), RegisteredFunction.ofFactory(ApiSpec.SYS_SLEEP.member(), () -> LuaSandbox.sleepFunction(seconds -> {
-            ScriptHost caller = host.get();
-            if (caller.isKernel()) {
-                throw new LuaError("kernel hooks must answer immediately and can't sleep");
-            }
-            checkCallable(ApiSpec.SYS_SLEEP, terminal, caller);
+        awaitApi(sys, ApiSpec.SYS_SLEEP, terminal, host, (player, args) -> {
+            double seconds = args.arg(1).checkDouble();
             if (seconds < 0.05 || seconds > 60) {
                 throw new LuaError("sys.sleep takes 0.05 to 60 seconds");
             }
-        })).create());
+            return new LuaSandbox.Timer(seconds);
+        });
         return sys;
+    }
+
+    @FunctionalInterface
+    private interface AwaitBody {
+        LuaSandbox.Awaitable start(ServerPlayer player, Varargs args) throws LuaError;
+    }
+
+    /**
+     * An API that suspends the calling program until it finishes (sleeping, scanning, access).
+     * Kernel hooks must answer immediately, so they can't call these.
+     */
+    private static void awaitApi(LuaTable table, ApiSpec spec, Terminal terminal, Supplier<ScriptHost> host, AwaitBody body) {
+        table.rawset(spec.member(), LuaSandbox.awaitFunction(spec.member(), args -> {
+            ScriptHost caller = host.get();
+            if (caller != null && caller.isKernel()) {
+                throw new LuaError(spec.id() + " waits, and kernel hooks must answer immediately");
+            }
+            return body.start(checkCallable(spec, terminal, caller), args);
+        }));
     }
 
     // endregion
