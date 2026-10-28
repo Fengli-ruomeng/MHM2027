@@ -85,7 +85,7 @@ public final class Terminal {
             throw new InstallException("The terminal is rebooting (" + lockReason + ")");
         }
 
-        Program program = new Program(this, file, ScriptStore.read(server, file), tier.level(), tier.tops());
+        Program program = new Program(this, file, ScriptStore.read(server, owner, file), tier.level(), tier.tops());
         if (find(program.name()).isPresent()) {
             throw new InstallException(program.name() + " is already running");
         }
@@ -149,7 +149,7 @@ public final class Terminal {
         }
         Kernel next = file.equals(GatewayData.DEFAULT_KERNEL)
                 ? Kernel.baseline()
-                : Kernel.load(this, file, ScriptStore.read(server, file), tier.level(), tier.hookPoints());
+                : Kernel.load(this, file, ScriptStore.read(server, owner, file), tier.level(), tier.hookPoints());
 
         stopAllSilently();
         kernel = next;
@@ -390,6 +390,10 @@ public final class Terminal {
         return kernel;
     }
 
+    public UUID owner() {
+        return owner;
+    }
+
     public long now() {
         return now;
     }
@@ -440,7 +444,7 @@ public final class Terminal {
             return Kernel.baseline();
         }
         try {
-            return Kernel.load(this, file, ScriptStore.read(server, file), data.tier().level(), data.tier().hookPoints());
+            return Kernel.load(this, file, ScriptStore.read(server, owner, file), data.tier().level(), data.tier().hookPoints());
         } catch (InstallException e) {
             log("kernel", "couldn't load " + file + " (" + e.getMessage() + "); using " + GatewayData.DEFAULT_KERNEL);
             data.setKernel(GatewayData.DEFAULT_KERNEL);

@@ -40,6 +40,11 @@ public final class Terminals {
         return TERMINALS.computeIfAbsent(player.getUUID(), uuid -> new Terminal(player));
     }
 
+    /** LV-1: no cyber layer, so no terminal. */
+    public static boolean isNull(ServerPlayer player) {
+        return Terminal.data(player).tier().isNull();
+    }
+
     public static Optional<Terminal> existing(ServerPlayer player) {
         return Optional.ofNullable(TERMINALS.get(player.getUUID()));
     }
@@ -78,13 +83,12 @@ public final class Terminals {
         }
     }
 
-    /** Creates the script folder and checks the Lua runtime works, so a broken install fails loudly at startup. */
+    /** Checks the Lua runtime works, so a broken install fails loudly at startup. */
     @SubscribeEvent
     static void onServerStarted(ServerStartedEvent event) {
-        ScriptStore.ensureFolder(event.getServer());
         try {
             new LuaSandbox();
-            Mhm2027.LOGGER.info("Edge terminal ready: Lua runtime loaded, scripts in {}", ScriptStore.folder(event.getServer()));
+            Mhm2027.LOGGER.info("Edge terminal ready: Lua runtime loaded, player storage in {}", ScriptStore.root(event.getServer()));
         } catch (LuaError | LinkageError e) {
             Mhm2027.LOGGER.error("Edge terminal: the Lua runtime failed to start; programs won't run", e);
         }

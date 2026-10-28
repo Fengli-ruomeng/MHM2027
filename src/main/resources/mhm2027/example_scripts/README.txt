@@ -1,18 +1,16 @@
 MoreHarderMinecraft: Edge - terminal scripts
 =============================================
 
-Every .lua file in this folder is a script. Edit them in any editor (VS Code works well);
+This folder is your gateway's local storage. Every .lua file in it is a script you can run;
 the terminal reads the file fresh each time you start it.
 
-Commands
-  /edge scripts                 list scripts here
-  /edge run <name>              start a program
-  /edge stop <name>             stop a program
-  /edge ps                      what's running and what it costs
-  /edge log                     the terminal log (errors, print, sys.log)
-  /edge kernel                  show the kernel
-  /edge kernel install <name>   swap kernels (Baseline is built in)
-  /edge reboot                  stop everything, with a short debuff
+Press G (or the key set under Controls) to open the control panel:
+  Status      RAM, TOPS, Buffer and Heat
+  Processes   what's running and what it costs; run, stop and reboot
+  Kernel      the installed kernel; swap kernels (Baseline is built in)
+  Log         errors, print and sys.log output
+
+Server operators also have /edge commands for testing and administration.
 
 Examples
   Monitor.lua     LV0  resident: warns when your health is low

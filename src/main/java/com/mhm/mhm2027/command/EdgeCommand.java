@@ -40,11 +40,12 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 /**
- * The terminal. A terminal screen comes later; until then these commands are the terminal.
+ * Admin and testing commands, all op-only. Players manage their terminal from the control
+ * panel (G by default); these act on the op's own terminal unless a player is named.
  *
  * /edge                              your gateway status
- * /edge status [player]              (op for other players)
- * /edge scripts                      scripts in the world's edge/scripts folder
+ * /edge status [player]
+ * /edge scripts                      scripts in your storage folder
  * /edge run|stop <name>              start or stop a program
  * /edge ps                           running programs and what they use
  * /edge log                          the last lines of the terminal log
@@ -56,8 +57,13 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 public class EdgeCommand {
     private static final int LOG_LINES_SHOWN = 12;
 
-    private static final SuggestionProvider<CommandSourceStack> SCRIPTS = (ctx, builder) ->
-            SharedSuggestionProvider.suggest(ScriptStore.list(ctx.getSource().getServer()), builder);
+    private static final SuggestionProvider<CommandSourceStack> SCRIPTS = (ctx, builder) -> {
+        if (ctx.getSource().getEntity() instanceof ServerPlayer player) {
+            return SharedSuggestionProvider.suggest(ScriptStore.list(ctx.getSource().getServer(), player.getUUID()).stream()
+                    .map(ScriptStore.Entry::name), builder);
+        }
+        return builder.buildFuture();
+    };
     private static final SuggestionProvider<CommandSourceStack> RUNNING = (ctx, builder) -> {
         if (ctx.getSource().getEntity() instanceof ServerPlayer player) {
             return SharedSuggestionProvider.suggest(Terminals.get(player).programs().stream().map(Program::name), builder);
@@ -71,12 +77,13 @@ public class EdgeCommand {
     }
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+        // Players use the control panel; the whole command tree is for admins and testing.
         dispatcher.register(Commands.literal("edge")
+                .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                 .executes(ctx -> showStatus(ctx.getSource(), ctx.getSource().getPlayerOrException()))
                 .then(Commands.literal("status")
                         .executes(ctx -> showStatus(ctx.getSource(), ctx.getSource().getPlayerOrException()))
                         .then(Commands.argument("player", EntityArgument.player())
-                                .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                                 .executes(ctx -> showStatus(ctx.getSource(), EntityArgument.getPlayer(ctx, "player")))))
                 .then(Commands.literal("scripts").executes(ctx -> listScripts(ctx.getSource())))
                 .then(Commands.literal("run")
@@ -94,7 +101,6 @@ public class EdgeCommand {
                                         .executes(ctx -> installKernel(ctx.getSource(), StringArgumentType.getString(ctx, "script"))))))
                 .then(Commands.literal("reboot").executes(ctx -> reboot(ctx.getSource())))
                 .then(Commands.literal("set")
-                        .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                         .then(setter("level", IntegerArgumentType.integer(GatewayTier.MIN_LEVEL, GatewayTier.MAX_LEVEL),
                                 (data, value) -> data.setLevel((int) value)))
                         .then(setter("buffer", DoubleArgumentType.doubleArg(0), GatewayData::setBufferMb))
@@ -143,10 +149,13 @@ public class EdgeCommand {
 
     // region Programs and kernel
 
-    private static int listScripts(CommandSourceStack source) {
-        List<String> scripts = ScriptStore.list(source.getServer());
-        MutableComponent out = Component.translatable("mhm2027.terminal.scripts_header", ScriptStore.folder(source.getServer()).toString())
-                .withStyle(ChatFormatting.AQUA);
+    private static int listScripts(CommandSourceStack source) throws CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        List<String> scripts = ScriptStore.list(source.getServer(), player.getUUID()).stream()
+                .map(entry -> entry.name() + (entry.kind() == ScriptStore.Kind.KERNEL ? " (kernel)" : ""))
+                .toList();
+        MutableComponent out = Component.translatable("mhm2027.terminal.scripts_header",
+                ScriptStore.folder(source.getServer(), player.getUUID()).toString()).withStyle(ChatFormatting.AQUA);
         out.append("\n").append(scripts.isEmpty()
                 ? Component.translatable("mhm2027.terminal.none").withStyle(ChatFormatting.GRAY)
                 : Component.literal(String.join(", ", scripts)));
