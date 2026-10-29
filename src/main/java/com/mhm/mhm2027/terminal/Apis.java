@@ -3,8 +3,11 @@ package com.mhm.mhm2027.terminal;
 import static org.squiddev.cobalt.ValueFactory.valueOf;
 import static org.squiddev.cobalt.ValueFactory.varargsOf;
 
+import java.util.Comparator;
+import java.util.List;
 import java.util.function.Supplier;
 
+import org.jspecify.annotations.Nullable;
 import org.squiddev.cobalt.Constants;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
@@ -20,9 +23,19 @@ import com.mhm.mhm2027.gateway.GatewayTier;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.food.FoodData;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * The Lua side of the first API set: {@code me} (your body), {@code sys} (your terminal),
@@ -47,6 +60,7 @@ final class Apis {
         LuaTable globals = sandbox.globals();
         globals.rawset("me", me(terminal, host));
         globals.rawset("sys", sys(terminal, host));
+        globals.rawset("remote", remote(terminal, host));
         bindCommon(globals, terminal, host);
     }
 
@@ -241,6 +255,115 @@ final class Apis {
             }
             return body.start(checkCallable(spec, terminal, caller), args);
         }));
+    }
+
+    // endregion
+
+    // region remote
+
+    /** How long remote.inspect takes: about a second, per the design. */
+    private static final int INSPECT_TICKS = 20;
+    private static final int MAX_SCAN_RESULTS = 8;
+
+    private static LuaTable remote(Terminal terminal, Supplier<ScriptHost> host) {
+        LuaTable remote = new LuaTable();
+        api(remote, ApiSpec.REMOTE_TARGET, terminal, host, (player, args) ->
+                EntityHandles.of(crosshairTarget(player, Terminal.data(player).tier().scanRange()), player));
+        api(remote, ApiSpec.REMOTE_SCAN, terminal, host, (player, args) -> {
+            int range = Terminal.data(player).tier().scanRange();
+            double radius = Math.clamp(args.arg(1).optDouble(range), 1, range);
+            List<LivingEntity> found = player.level().getEntitiesOfClass(LivingEntity.class, player.getBoundingBox().inflate(radius),
+                    entity -> Gateways.targetable(entity, player) && entity.distanceTo(player) <= radius);
+            found.sort(Comparator.comparingDouble(entity -> entity.distanceTo(player)));
+            LuaTable list = new LuaTable();
+            for (int i = 0; i < Math.min(MAX_SCAN_RESULTS, found.size()); i++) {
+                list.rawset(i + 1, EntityHandles.of(found.get(i), player));
+            }
+            return list;
+        });
+        awaitApi(remote, ApiSpec.REMOTE_INSPECT, terminal, host, (player, args) -> {
+            LuaValue target = args.arg(1);
+            EntityHandles.check(target, ApiSpec.REMOTE_INSPECT.id());
+            return new Inspection(terminal, target);
+        });
+        return remote;
+    }
+
+    /** The gateway entity under the crosshair, up to {@code range} blocks, not through walls. */
+    private static @Nullable Entity crosshairTarget(ServerPlayer player, double range) {
+        Vec3 eye = player.getEyePosition();
+        Vec3 look = player.getViewVector(1.0F);
+        Vec3 end = eye.add(look.scale(range));
+        BlockHitResult wall = player.level().clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+        if (wall.getType() != HitResult.Type.MISS) {
+            end = wall.getLocation();
+        }
+        AABB area = player.getBoundingBox().expandTowards(look.scale(range)).inflate(1.0);
+        EntityHitResult hit = ProjectileUtil.getEntityHitResult(player, eye, end, area,
+                entity -> Gateways.targetable(entity, player), eye.distanceToSqr(end));
+        return hit == null ? null : hit.getEntity();
+    }
+
+    /**
+     * A one-second scan of another gateway. When it finishes the target must still be in range;
+     * the result is its level and the flaws it currently has, exactly as it sees them, and the
+     * target's programs hear about it through on_scanned.
+     */
+    private static final class Inspection implements LuaSandbox.Awaitable {
+        private final Terminal terminal;
+        private final LuaValue target;
+        private int ticksLeft = INSPECT_TICKS;
+        private Varargs result = Constants.NIL;
+
+        Inspection(Terminal terminal, LuaValue target) {
+            this.terminal = terminal;
+            this.target = target;
+        }
+
+        @Override
+        public boolean tick() {
+            if (--ticksLeft > 0) {
+                return false;
+            }
+            ServerPlayer viewer = terminal.player();
+            if (viewer != null) {
+                LivingEntity entity = EntityHandles.resolve(target, viewer, Terminal.data(viewer).tier().scanRange());
+                if (entity != null && Gateways.targetable(entity, viewer)) {
+                    result = report(entity, viewer);
+                    if (entity instanceof ServerPlayer scanned) {
+                        Terminals.existing(scanned).ifPresent(other ->
+                                other.fire(ScriptEvents.ON_SCANNED, () -> EntityHandles.of(viewer, scanned)));
+                    }
+                }
+            }
+            return true;
+        }
+
+        private static LuaTable report(LivingEntity entity, ServerPlayer viewer) {
+            LuaTable report = new LuaTable();
+            report.rawset("address", valueOf(Addresses.of(entity.getUUID())));
+            report.rawset("name", valueOf(entity.getName().getString()));
+            report.rawset("is_player", valueOf(entity instanceof Player));
+            report.rawset("distance", valueOf(entity.distanceTo(viewer)));
+            GatewayData data = Gateways.of(entity);
+            report.rawset("level", valueOf(data == null ? -1 : data.level()));
+            LuaTable flaws = new LuaTable();
+            for (FlawRules.Hit hit : Gateways.flawsOf(entity)) {
+                flaws.rawset(hit.className(), valueOf(hit.severity().id()));
+            }
+            report.rawset("flaws", flaws);
+            return report;
+        }
+
+        @Override
+        public Varargs result() {
+            return result;
+        }
+
+        @Override
+        public String state() {
+            return "scanning";
+        }
     }
 
     // endregion

@@ -6,9 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -33,7 +36,12 @@ public final class ScriptStore {
     private static final int MAX_FILES = 64;
     private static final String EXAMPLES_ROOT = "/" + Mhm2027.MODID + "/example_scripts/";
     private static final List<String> EXAMPLES = List.of(
-            "README.txt", "Adrenaline.lua", "Monitor.lua", "Status.lua", "Spinner.lua", "Bulwark.lua");
+            "README.txt", "Adrenaline.lua", "Monitor.lua", "Status.lua", "Spinner.lua", "Bulwark.lua", "Scanner.lua");
+    /** The examples shipped before the offered-examples record existed. */
+    private static final List<String> FIRST_EXAMPLES = EXAMPLES.subList(0, 6);
+    private static final String OFFERED_FILE = ".examples";
+    /** Folders already brought up to date since the server started, so the panel's frequent reads stay cheap. */
+    private static final Set<Path> UP_TO_DATE = ConcurrentHashMap.newKeySet();
 
     /** What a file is, from its header, without running it. */
     public enum Kind {
@@ -57,22 +65,54 @@ public final class ScriptStore {
     /** Creates the player's folder with the example scripts the first time it's needed. */
     public static Path ensureFolder(MinecraftServer server, UUID player) {
         Path folder = folder(server, player);
-        if (Files.isDirectory(folder)) {
+        if (UP_TO_DATE.contains(folder) && Files.isDirectory(folder)) {
             return folder;
         }
         try {
             Files.createDirectories(folder);
-            for (String example : EXAMPLES) {
-                try (InputStream in = ScriptStore.class.getResourceAsStream(EXAMPLES_ROOT + example)) {
-                    if (in != null) {
-                        Files.copy(in, folder.resolve(example));
-                    }
-                }
-            }
+            offerExamples(folder);
+            UP_TO_DATE.add(folder);
         } catch (IOException e) {
             Mhm2027.LOGGER.error("Couldn't create the Edge script folder at {}", folder, e);
         }
         return folder;
+    }
+
+    /**
+     * Copies each example into the folder once. New examples reach players who already have a
+     * folder, and an example a player deleted never comes back. The ones already offered are
+     * listed in a hidden file next to the scripts.
+     */
+    private static void offerExamples(Path folder) throws IOException {
+        Path record = folder.resolve(OFFERED_FILE);
+        Set<String> offered = new HashSet<>();
+        if (Files.exists(record)) {
+            offered.addAll(Files.readAllLines(record, StandardCharsets.UTF_8));
+        } else {
+            try (Stream<Path> files = Files.list(folder)) {
+                // A folder from before this record existed already received the first examples.
+                if (files.findAny().isPresent()) {
+                    offered.addAll(FIRST_EXAMPLES);
+                }
+            }
+        }
+        boolean changed = !Files.exists(record);
+        for (String example : EXAMPLES) {
+            if (offered.add(example)) {
+                changed = true;
+                Path target = folder.resolve(example);
+                if (!Files.exists(target)) {
+                    try (InputStream in = ScriptStore.class.getResourceAsStream(EXAMPLES_ROOT + example)) {
+                        if (in != null) {
+                            Files.copy(in, target);
+                        }
+                    }
+                }
+            }
+        }
+        if (changed) {
+            Files.write(record, offered.stream().sorted().toList(), StandardCharsets.UTF_8);
+        }
     }
 
     /** The player's scripts, sorted by name, each marked as a program or a kernel. */

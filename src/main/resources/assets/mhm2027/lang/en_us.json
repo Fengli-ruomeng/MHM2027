@@ -138,5 +138,9 @@
   "mhm2027.editor.unsaved_message": "Discard your changes to %s?",
   "mhm2027.editor.delete_title": "Delete script",
   "mhm2027.editor.delete_message": "Delete %s from your storage? This can't be undone.",
-  "mhm2027.panel.state.waiting": "waiting"
+  "mhm2027.panel.state.waiting": "waiting",
+  "mhm2027.command.mob_kernel": "Set the kernel of %s mob(s)",
+  "mhm2027.panel.state.scanning": "scanning",
+  "mhm2027.configuration.players": "Players",
+  "mhm2027.configuration.playerTargets": "Players Can Target Players"
 }

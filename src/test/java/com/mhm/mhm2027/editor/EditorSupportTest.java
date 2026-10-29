@@ -61,6 +61,9 @@ class EditorSupportTest {
         assertEquals(1, me.getFirst().level());
 
         assertTrue(Completions.suggest("x = sys.", false).size() >= 10);
+        assertEquals(List.of("remote.inspect(target)"),
+                Completions.suggest("local r = remote.ins", false).stream().map(Completions.Suggestion::label).toList());
+        assertTrue(Completions.suggest("remote.", true).isEmpty(), "remote.* is program-only");
     }
 
     @Test

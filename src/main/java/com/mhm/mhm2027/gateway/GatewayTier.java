@@ -81,6 +81,16 @@ public enum GatewayTier {
         return hookPoints;
     }
 
+    /** How far remote.scan and remote.inspect reach, in blocks: 16, plus one per level. */
+    public int scanRange() {
+        return 16 + Math.max(0, level);
+    }
+
+    /** How far an access attempt can start, in blocks: about 12, more at higher levels. */
+    public int accessRange() {
+        return 12 + Math.max(0, level);
+    }
+
     /** LV-1 has no cyber layer at all: no programs, no gear, can't be hacked. */
     public boolean isNull() {
         return this == NULL;

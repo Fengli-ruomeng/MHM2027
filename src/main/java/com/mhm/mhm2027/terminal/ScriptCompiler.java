@@ -44,9 +44,6 @@ final class ScriptCompiler {
         Matcher matcher = API_REFERENCE.matcher(code);
         while (matcher.find()) {
             String id = matcher.group(1) + "." + matcher.group(2);
-            if (matcher.group(1).equals("remote")) {
-                throw new InstallException(id + ": remote APIs arrive with cyber combat and aren't available yet");
-            }
             ApiSpec spec = ApiSpec.byId(id).orElseThrow(() -> new InstallException("Unknown API " + id));
             if (kernel && !spec.kernel()) {
                 throw new InstallException(id + " can't be used in a kernel");

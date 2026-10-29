@@ -39,6 +39,14 @@ public class Config {
             .defineInRange("instructionsPerTops", 20, 1, 1000);
 
     static {
+        BUILDER.pop().push("players");
+    }
+
+    public static final ModConfigSpec.BooleanValue PLAYER_TARGETS = BUILDER
+            .comment("Whether players' programs can scan, inspect and (later) access other players. Mobs are always targets")
+            .define("playerTargets", true);
+
+    static {
         BUILDER.pop();
     }
 

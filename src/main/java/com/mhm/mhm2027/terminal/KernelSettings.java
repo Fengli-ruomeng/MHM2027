@@ -29,16 +29,28 @@ public record KernelSettings(String schedule, String gc, String verify, int rate
     public int topsReserve() {
         return HOOK_RESERVE_TOPS + gcTops();
     }
-    private static final List<String> SCHEDULES = List.of("fair", "priority");
-    private static final List<String> GC_MODES = List.of("lazy", "normal", "aggressive");
-    private static final List<String> VERIFY_MODES = List.of("full", "fast", "skip");
+    public static final List<String> SCHEDULES = List.of("fair", "priority");
+    public static final List<String> GC_MODES = List.of("lazy", "normal", "aggressive");
+    public static final List<String> VERIFY_MODES = List.of("full", "fast", "skip");
+    public static final int MIN_RATE_LIMIT = 1;
+    public static final int MAX_RATE_LIMIT = 20;
+
+    /** Settings from outside a script (a mob's native kernel). Refuses values a header would refuse. */
+    public static KernelSettings of(String schedule, String gc, String verify, int rateLimit) throws InstallException {
+        if (!SCHEDULES.contains(schedule) || !GC_MODES.contains(gc) || !VERIFY_MODES.contains(verify)
+                || rateLimit < MIN_RATE_LIMIT || rateLimit > MAX_RATE_LIMIT) {
+            throw new InstallException("Kernel settings must be schedule " + SCHEDULES + ", gc " + GC_MODES
+                    + ", verify " + VERIFY_MODES + ", rate_limit " + MIN_RATE_LIMIT + "-" + MAX_RATE_LIMIT);
+        }
+        return new KernelSettings(schedule, gc, verify, rateLimit);
+    }
 
     static KernelSettings fromHeader(LuaTable header) throws InstallException {
         return new KernelSettings(
                 choice(header, "schedule", SCHEDULES, DEFAULT.schedule),
                 choice(header, "gc", GC_MODES, DEFAULT.gc),
                 choice(header, "verify", VERIFY_MODES, DEFAULT.verify),
-                ScriptCompiler.intField(header, "rate_limit", DEFAULT.rateLimit, 1, 20));
+                ScriptCompiler.intField(header, "rate_limit", DEFAULT.rateLimit, MIN_RATE_LIMIT, MAX_RATE_LIMIT));
     }
 
     /** Multiplier on the garbage-collection rate. */

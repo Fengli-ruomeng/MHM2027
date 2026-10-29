@@ -9,14 +9,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.squiddev.cobalt.Constants;
 import org.squiddev.cobalt.LuaError;
-import org.squiddev.cobalt.LuaTable;
 import org.squiddev.cobalt.LuaValue;
 
 import com.mhm.mhm2027.Mhm2027;
 
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -129,19 +126,8 @@ public final class Terminals {
         }
     }
 
-    /**
-     * A read-only snapshot of another entity, as seen from the player. This stands in for the
-     * full entity handles (address, level, ...) that come with cyber combat.
-     */
+    /** Event arguments are entity handles, so a program can pass them straight to remote.inspect. */
     private static LuaValue describe(Entity entity, ServerPlayer viewer) {
-        if (entity == null) {
-            return Constants.NIL;
-        }
-        LuaTable table = new LuaTable();
-        table.rawset("kind", valueOf(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString()));
-        table.rawset("name", valueOf(entity.getName().getString()));
-        table.rawset("is_player", valueOf(entity instanceof ServerPlayer));
-        table.rawset("distance", valueOf(viewer.distanceTo(entity)));
-        return table;
+        return EntityHandles.of(entity, viewer);
     }
 }

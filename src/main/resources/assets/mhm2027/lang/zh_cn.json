@@ -138,5 +138,9 @@
   "mhm2027.editor.unsaved_message": "放弃对 %s 的更改？",
   "mhm2027.editor.delete_title": "删除脚本",
   "mhm2027.editor.delete_message": "从存储中删除 %s？此操作无法撤销。",
-  "mhm2027.panel.state.waiting": "等待中"
+  "mhm2027.panel.state.waiting": "等待中",
+  "mhm2027.command.mob_kernel": "已设置 %s 个生物的内核",
+  "mhm2027.panel.state.scanning": "扫描中",
+  "mhm2027.configuration.players": "玩家",
+  "mhm2027.configuration.playerTargets": "玩家可以以其他玩家为目标"
 }

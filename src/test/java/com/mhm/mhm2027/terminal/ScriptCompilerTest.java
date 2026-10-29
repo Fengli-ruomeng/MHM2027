@@ -58,8 +58,12 @@ class ScriptCompilerTest {
     }
 
     @Test
-    void remoteApisAreNotAvailableYet() {
+    void remoteApisWorkFromLevelZeroInProgramsOnly() throws Exception {
+        assertEquals(Set.of(ApiSpec.REMOTE_SCAN, ApiSpec.REMOTE_INSPECT),
+                ScriptCompiler.scanApis("local t = remote.scan(8)[1]\nremote.inspect(t)", false, ProgramType.RESIDENT, 0));
         assertThrows(InstallException.class, () ->
-                ScriptCompiler.scanApis("remote.scan(16)", false, ProgramType.RESIDENT, 11));
+                ScriptCompiler.scanApis("remote.fly()", false, ProgramType.RESIDENT, 11));
+        assertThrows(InstallException.class, () ->
+                ScriptCompiler.scanApis("remote.target()", true, null, 11));
     }
 }

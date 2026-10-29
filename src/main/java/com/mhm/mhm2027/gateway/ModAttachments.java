@@ -3,6 +3,9 @@ package com.mhm.mhm2027.gateway;
 import java.util.function.Supplier;
 
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.terminal.KernelSettings;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.attachment.AttachmentType;
@@ -19,6 +22,22 @@ public class ModAttachments {
             .serialize(GatewayData.CODEC.fieldOf("gateway"))
             .sync((holder, to) -> holder == to, GatewayData.STREAM_CODEC)
             .copyOnDeath()
+            .build());
+
+    private static final Codec<KernelSettings> KERNEL_SETTINGS_CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.STRING.fieldOf("schedule").forGetter(KernelSettings::schedule),
+            Codec.STRING.fieldOf("gc").forGetter(KernelSettings::gc),
+            Codec.STRING.fieldOf("verify").forGetter(KernelSettings::verify),
+            Codec.INT.fieldOf("rate_limit").forGetter(KernelSettings::rateLimit)
+    ).apply(instance, KernelSettings::new));
+
+    /**
+     * A mob's kernel. Mob kernels run natively in Java, so they are settings only, no Lua.
+     * Every gateway mob runs Baseline unless something (an admin now, spawn rules later) sets it.
+     */
+    public static final Supplier<AttachmentType<KernelSettings>> MOB_KERNEL = ATTACHMENT_TYPES.register("mob_kernel", () -> AttachmentType
+            .builder(() -> KernelSettings.DEFAULT)
+            .serialize(KERNEL_SETTINGS_CODEC.fieldOf("kernel"))
             .build());
 
     /** Presets written into the gateway. Server only: the panel gets them through its snapshots. */

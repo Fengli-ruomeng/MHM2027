@@ -13,7 +13,7 @@ import com.mhm.mhm2027.terminal.ScriptEvents;
  * editor can never suggest something the terminal would refuse for a different reason.
  */
 public final class Completions {
-    private static final Pattern API_PREFIX = Pattern.compile("\\b(me|sys)\\.([A-Za-z_]*)$");
+    private static final Pattern API_PREFIX = Pattern.compile("\\b(me|sys|remote)\\.([A-Za-z_]*)$");
     private static final Pattern EVENT_PREFIX = Pattern.compile("^\\s*function\\s+(on_[A-Za-z_]*)$");
 
     /**

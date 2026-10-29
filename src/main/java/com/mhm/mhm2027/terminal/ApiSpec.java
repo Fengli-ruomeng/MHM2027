@@ -54,6 +54,12 @@ public record ApiSpec(String id, String params, boolean kernel, int minLevel, in
     public static final ApiSpec SYS_LOG = register(new ApiSpec("sys.log", "text", true, 0, 1, 0, 0, false));
     public static final ApiSpec SYS_FLAWS = sysRead("sys.flaws");
 
+    // remote: other entities. Program-only, and available from LV0 with the same caps for everyone:
+    // levels raise limits on your own body, not power over others.
+    public static final ApiSpec REMOTE_TARGET = register(new ApiSpec("remote.target", "", false, 0, 2, 2, 0, false));
+    public static final ApiSpec REMOTE_SCAN = register(new ApiSpec("remote.scan", "radius", false, 0, 8, 4, 0, false));
+    public static final ApiSpec REMOTE_INSPECT = register(new ApiSpec("remote.inspect", "target", false, 0, 5, 4, 0, false));
+
     private static ApiSpec read(String id) {
         return register(new ApiSpec(id, "", false, 0, 1, 1, 0, false));
     }

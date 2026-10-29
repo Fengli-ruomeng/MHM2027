@@ -53,6 +53,20 @@ class ScriptAnalyzerTest {
     }
 
     @Test
+    void everyExampleScriptInstalls() throws Exception {
+        try (Stream<Path> files = Files.list(RESOURCES.resolve("mhm2027/example_scripts"))) {
+            List<Path> examples = files.filter(file -> file.toString().endsWith(".lua")).toList();
+            assertTrue(examples.size() >= 6);
+            for (Path file : examples) {
+                String name = file.getFileName().toString().replace(".lua", "");
+                ScriptAnalyzer.analyze(name, Files.readString(file), false);
+            }
+        }
+        assertEquals(0, ScriptAnalyzer.analyze("Scanner", read("mhm2027/example_scripts/Scanner.lua"), false).summary().level(),
+                "Scanner should work at LV0");
+    }
+
+    @Test
     void presetsMayReachExactlyOneLevelAboveTheirRequirement() throws Exception {
         ScriptAnalyzer.Analysis shot = ScriptAnalyzer.analyze("adrenaline_shot", read("data/mhm2027/edge_presets/adrenaline_shot.lua"), true);
         assertEquals(0, shot.presetLevel());

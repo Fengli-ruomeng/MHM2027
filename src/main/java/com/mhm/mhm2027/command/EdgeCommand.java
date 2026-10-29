@@ -2,7 +2,6 @@ package com.mhm.mhm2027.command;
 
 import static com.mhm.mhm2027.gateway.GatewayData.formatMb;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.ObjDoubleConsumer;
@@ -13,6 +12,7 @@ import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.terminal.FlawRules;
 import com.mhm.mhm2027.terminal.InstallException;
+import com.mhm.mhm2027.terminal.KernelSettings;
 import com.mhm.mhm2027.terminal.Kernel;
 import com.mhm.mhm2027.terminal.Program;
 import com.mhm.mhm2027.terminal.ScriptStore;
@@ -36,6 +36,8 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -108,7 +110,8 @@ public class EdgeCommand {
                                 (data, value) -> data.setLevel((int) value)))
                         .then(setter("buffer", DoubleArgumentType.doubleArg(0), GatewayData::setBufferMb))
                         .then(setter("leak", DoubleArgumentType.doubleArg(0), GatewayData::setLeakMb))
-                        .then(setter("heat", DoubleArgumentType.doubleArg(0, GatewayData.MAX_HEAT), GatewayData::setHeat))));
+                        .then(setter("heat", DoubleArgumentType.doubleArg(0, GatewayData.MAX_HEAT), GatewayData::setHeat)))
+                .then(mobKernel()));
     }
 
     // region Status
@@ -290,24 +293,67 @@ public class EdgeCommand {
 
     // region Testing
 
+    /** Works on players and mobs, so admins can give a mob a gateway to test against. */
     private static LiteralArgumentBuilder<CommandSourceStack> setter(String name, ArgumentType<? extends Number> type, ObjDoubleConsumer<GatewayData> apply) {
         return Commands.literal(name)
-                .then(Commands.argument("players", EntityArgument.players())
+                .then(Commands.argument("targets", EntityArgument.entities())
                         .then(Commands.argument("value", type)
                                 .executes(ctx -> set(ctx, name, apply))));
     }
 
     private static int set(CommandContext<CommandSourceStack> ctx, String name, ObjDoubleConsumer<GatewayData> apply) throws CommandSyntaxException {
-        Collection<ServerPlayer> players = EntityArgument.getPlayers(ctx, "players");
+        List<LivingEntity> targets = livingTargets(ctx);
         double value = ctx.getArgument("value", Number.class).doubleValue();
-        for (ServerPlayer player : players) {
-            GatewayData data = player.getData(ModAttachments.GATEWAY);
+        for (LivingEntity target : targets) {
+            GatewayData data = target.getData(ModAttachments.GATEWAY);
             apply.accept(data, value);
             data.consumeDirty();
-            player.syncData(ModAttachments.GATEWAY);
+            if (target instanceof ServerPlayer player) {
+                player.syncData(ModAttachments.GATEWAY);
+            }
         }
-        ctx.getSource().sendSuccess(() -> Component.translatable("mhm2027.command.set", name, formatNumber(value), players.size()), true);
-        return players.size();
+        ctx.getSource().sendSuccess(() -> Component.translatable("mhm2027.command.set", name, formatNumber(value), targets.size()), true);
+        return targets.size();
+    }
+
+    /** /edge mobkernel: a mob's native kernel settings, which decide its static flaws. */
+    private static LiteralArgumentBuilder<CommandSourceStack> mobKernel() {
+        return Commands.literal("mobkernel")
+                .then(Commands.argument("targets", EntityArgument.entities())
+                        .then(Commands.argument("schedule", StringArgumentType.word()).suggests(choices(KernelSettings.SCHEDULES))
+                                .then(Commands.argument("gc", StringArgumentType.word()).suggests(choices(KernelSettings.GC_MODES))
+                                        .then(Commands.argument("verify", StringArgumentType.word()).suggests(choices(KernelSettings.VERIFY_MODES))
+                                                .then(Commands.argument("rate_limit", IntegerArgumentType.integer(
+                                                                KernelSettings.MIN_RATE_LIMIT, KernelSettings.MAX_RATE_LIMIT))
+                                                        .executes(EdgeCommand::setMobKernel))))));
+    }
+
+    private static int setMobKernel(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        KernelSettings settings;
+        try {
+            settings = KernelSettings.of(StringArgumentType.getString(ctx, "schedule"), StringArgumentType.getString(ctx, "gc"),
+                    StringArgumentType.getString(ctx, "verify"), IntegerArgumentType.getInteger(ctx, "rate_limit"));
+        } catch (InstallException e) {
+            ctx.getSource().sendFailure(Component.literal(e.getMessage()));
+            return 0;
+        }
+        List<LivingEntity> mobs = livingTargets(ctx).stream().filter(entity -> !(entity instanceof Player)).toList();
+        for (LivingEntity mob : mobs) {
+            mob.setData(ModAttachments.MOB_KERNEL, settings);
+        }
+        ctx.getSource().sendSuccess(() -> Component.translatable("mhm2027.command.mob_kernel", mobs.size()), true);
+        return mobs.size();
+    }
+
+    private static SuggestionProvider<CommandSourceStack> choices(List<String> options) {
+        return (ctx, builder) -> SharedSuggestionProvider.suggest(options, builder);
+    }
+
+    private static List<LivingEntity> livingTargets(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        return EntityArgument.getEntities(ctx, "targets").stream()
+                .filter(entity -> entity instanceof LivingEntity)
+                .map(entity -> (LivingEntity) entity)
+                .toList();
     }
 
     // endregion
