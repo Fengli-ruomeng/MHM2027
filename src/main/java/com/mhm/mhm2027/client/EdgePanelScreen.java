@@ -205,6 +205,12 @@ public class EdgePanelScreen extends Screen {
         y += ROW_HEIGHT;
         text(graphics, Component.translatable("mhm2027.terminal.slots", tier.standardSlots(), tier.overloadSlots(), tier.hookPoints()), x, y, COLOR_DIM);
         y += ROW_HEIGHT;
+        List<PanelSnapshot.FlawRow> activeFlaws = snapshot.flaws().stream().filter(flaw -> !flaw.approaching()).toList();
+        if (!activeFlaws.isEmpty()) {
+            String names = String.join(", ", activeFlaws.stream().map(PanelSnapshot.FlawRow::className).toList());
+            text(graphics, clip(Component.translatable("mhm2027.panel.flaws_brief", names), panelWidth - 2 * PADDING), x, y, COLOR_WARN);
+            y += ROW_HEIGHT;
+        }
         if (snapshot.rebooting()) {
             text(graphics, Component.translatable("mhm2027.terminal.rebooting", snapshot.lockReason(), snapshot.lockSecondsLeft()), x, y, COLOR_WARN);
             y += ROW_HEIGHT;
@@ -295,6 +301,20 @@ public class EdgePanelScreen extends Screen {
                 kernelInfo.hooks().isEmpty() ? "-" : String.join(", ", kernelInfo.hooks())), x + 4, y + 2, COLOR_TEXT));
         rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.terminal.kernel_cost",
                 formatMb(kernelInfo.ramMb()), kernelInfo.tops()), x + 4, y + 2, COLOR_DIM));
+
+        rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.panel.flaws"), x, y + 4, COLOR_ACCENT));
+        if (snapshot.flaws().isEmpty()) {
+            rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.terminal.none"), x + 4, y + 2, COLOR_DIM));
+        }
+        for (PanelSnapshot.FlawRow flaw : snapshot.flaws()) {
+            rows.add((g, y, hover) -> {
+                Component severity = Component.translatable("mhm2027.flaw." + flaw.severity());
+                Component line = flaw.approaching()
+                        ? Component.translatable("mhm2027.terminal.flaw_close", flaw.className(), severity, flaw.cause())
+                        : Component.translatable("mhm2027.terminal.flaw_line", flaw.className(), severity, flaw.cause());
+                text(g, clip(line, panelWidth - 2 * PADDING - 8), x + 4, y + 2, flawColor(flaw.severity(), flaw.approaching()));
+            });
+        }
 
         rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.panel.kernels_in_storage"), x, y + 4, COLOR_ACCENT));
         List<PanelSnapshot.ScriptRow> kernels = new ArrayList<>();
@@ -506,6 +526,17 @@ public class EdgePanelScreen extends Screen {
     private static Component stateLabel(String state) {
         String key = state.startsWith("paused") ? "paused" : state;
         return Component.translatable("mhm2027.panel.state." + key);
+    }
+
+    private static int flawColor(String severity, boolean approaching) {
+        if (approaching) {
+            return COLOR_DIM;
+        }
+        return switch (severity) {
+            case "critical", "major" -> COLOR_ALERT;
+            case "minor" -> COLOR_WARN;
+            default -> COLOR_TEXT;
+        };
     }
 
     private static int stateColor(String state) {

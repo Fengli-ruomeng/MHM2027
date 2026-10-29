@@ -4,6 +4,7 @@ import static org.squiddev.cobalt.ValueFactory.valueOf;
 import static org.squiddev.cobalt.ValueFactory.varargsOf;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -65,6 +66,7 @@ public final class Terminals {
                 terminal.discard(player);
                 Terminal.data(player).setUsage(0, 0);
             }
+            Terminal.data(player).setDynamicFlaws(List.of());
             return;
         }
         get(player).tick(player);

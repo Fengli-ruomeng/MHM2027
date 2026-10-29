@@ -8,6 +8,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -45,8 +46,13 @@ public final class Terminal {
     private static final int PANIC_LOCK_TICKS = 100;
     private static final int REBOOT_LOCK_TICKS = 60;
     private static final int KERNEL_SWAP_LOCK_TICKS = 200;
+    /** Dynamic flaw rules are checked a few times a second, on the same cadence the HUD syncs. */
+    private static final int FLAW_INTERVAL_TICKS = 10;
     /** Each program that crashes in a panic leaves this share of its RAM behind as Leak. */
     private static final double PANIC_LEAK_SHARE = 0.25;
+    /** Timed {@code me.*} writes. A kernel-swap debuff is not an enhancement, so it is not here. */
+    private static final Set<String> BODY_ENHANCEMENTS = Set.of(
+            "speed_boost", "jump_boost", "fall_guard", "max_health_boost", "damage_boost", "knockback_resist");
 
     private final UUID owner;
     private final MinecraftServer server;
@@ -61,11 +67,16 @@ public final class Terminal {
     private long lockedUntil;
     private String lockReason = "";
     private @Nullable String pendingPanic;
+    private FlawRules.Profile flaws = FlawRules.Profile.EMPTY;
+    private List<FlawRules.Hit> publishedFlaws = List.of();
+    /** Set when the body is replaced, so the next tick rechecks before the usual interval. */
+    private boolean recheckFlaws;
 
     Terminal(ServerPlayer player) {
         this.owner = player.getUUID();
         this.server = player.level().getServer();
         this.kernel = loadSavedKernel(player);
+        refreshFlaws(player, false);
     }
 
     // region Lifecycle
@@ -116,6 +127,7 @@ public final class Terminal {
         programs.add(program);
         program.begin();
         updateUsage(player);
+        refreshFlaws(player, true);
         log(program.name(), "started (" + program.type().id() + ", " + GatewayData.formatMb(program.ramMb()) + ", "
                 + program.tops() + " TOPS)");
         return program;
@@ -131,7 +143,10 @@ public final class Terminal {
         program.get().stop(this, instructionsPerTops());
         recoveringTops.add(new int[]{program.get().tops(), TOPS_RECOVERY_TICKS});
         log(name, "stopped");
-        withPlayer(this::updateUsage);
+        withPlayer(player -> {
+            updateUsage(player);
+            refreshFlaws(player, true);
+        });
         return true;
     }
 
@@ -139,7 +154,11 @@ public final class Terminal {
     public void reboot() {
         stopAllSilently();
         lock("reboot", REBOOT_LOCK_TICKS);
-        withPlayer(player -> applyDowntimeDebuff(player, REBOOT_LOCK_TICKS, false));
+        withPlayer(player -> {
+            applyDowntimeDebuff(player, REBOOT_LOCK_TICKS, false);
+            // Programs are gone, so a scheduler flaw opened by load should drop now, not half a second later.
+            refreshFlaws(player, false);
+        });
         log("kernel", "rebooted");
     }
 
@@ -161,10 +180,15 @@ public final class Terminal {
         stopAllSilently();
         kernel = next;
         data(player).setKernel(next.isBaseline() ? GatewayData.DEFAULT_KERNEL : id);
+        // Programs were just cleared, so the static flaws are the ones these settings create.
+        refreshFlaws(player, false);
         lock("kernel swap", KERNEL_SWAP_LOCK_TICKS);
         applyDowntimeDebuff(player, KERNEL_SWAP_LOCK_TICKS, true);
         updateUsage(player);
         log("kernel", "installed " + next.name());
+        for (String line : FlawRules.installLog(flaws)) {
+            log("kernel", line);
+        }
         return next;
     }
 
@@ -175,6 +199,7 @@ public final class Terminal {
         cooldowns.clear();
         lockedUntil = 0;
         pendingPanic = null;
+        recheckFlaws = true;
     }
 
     /** Logout: take every timed modifier back off the player. */
@@ -204,11 +229,12 @@ public final class Terminal {
 
     void tick(ServerPlayer player) {
         now++;
-        tickModifiers(player);
+        boolean bodyChanged = tickModifiers(player);
         recoveringTops.removeIf(entry -> --entry[1] <= 0);
 
         if (isRebooting()) {
             updateUsage(player);
+            refreshFlawsIfDue(player, bodyChanged);
             return;
         }
         if (pendingPanic != null) {
@@ -233,11 +259,13 @@ public final class Terminal {
             }
             if (!program.tick(this, now, instructionsPerTops)) {
                 programs.remove(program);
+                recheckFlaws = true;
             } else if (program.stopRequested()) {
                 stop(program.name());
             }
         }
         updateUsage(player);
+        refreshFlawsIfDue(player, bodyChanged);
     }
 
     /**
@@ -253,6 +281,7 @@ public final class Terminal {
         pendingPanic = reason;
         applyDowntimeDebuff(player, PANIC_LOCK_TICKS, false);
         updateUsage(player);
+        refreshFlaws(player, false);
         log("kernel", "PANIC: " + reason);
         player.sendSystemMessage(Component.translatable("mhm2027.terminal.panic", reason).withStyle(ChatFormatting.RED));
     }
@@ -264,6 +293,9 @@ public final class Terminal {
         if (programs.size() == before && data(player).isOutOfMemory() && !programs.isEmpty()) {
             Program newest = programs.removeLast();
             log(newest.name(), "force-stopped: out of memory");
+        }
+        if (programs.size() != before) {
+            recheckFlaws = true;
         }
     }
 
@@ -341,9 +373,12 @@ public final class Terminal {
         instance.removeModifier(id);
         instance.addTransientModifier(new AttributeModifier(id, amount, operation));
         modifiers.put(id, new TimedModifier(attribute, id, now + ticks));
+        refreshFlaws(player, true);
     }
 
-    private void tickModifiers(ServerPlayer player) {
+    /** @return whether an enhancement expired, which can clear a motor flaw before the next interval */
+    private boolean tickModifiers(ServerPlayer player) {
+        boolean expired = false;
         for (Iterator<TimedModifier> it = modifiers.values().iterator(); it.hasNext(); ) {
             TimedModifier modifier = it.next();
             if (now >= modifier.expiresAt()) {
@@ -352,8 +387,10 @@ public final class Terminal {
                     instance.removeModifier(modifier.id());
                 }
                 it.remove();
+                expired = true;
             }
         }
+        return expired;
     }
 
     private void applyDowntimeDebuff(ServerPlayer player, int ticks, boolean moderate) {
@@ -368,6 +405,63 @@ public final class Terminal {
     // endregion
 
     // region Accessors
+
+    /** Active flaws, as {@code sys.flaws()} returns them. Near-misses are not included. */
+    public List<FlawRules.Hit> flaws() {
+        return flaws.active();
+    }
+
+    /** Active flaws and the ones within a rule's near distance. The panel and {@code /edge flaws} use this. */
+    public FlawRules.Profile flawProfile() {
+        return flaws;
+    }
+
+    private void refreshFlawsIfDue(ServerPlayer player, boolean bodyChanged) {
+        if (bodyChanged || recheckFlaws || player.tickCount % FLAW_INTERVAL_TICKS == 0) {
+            recheckFlaws = false;
+            refreshFlaws(player, true);
+        }
+    }
+
+    /**
+     * Recomputes flaws from the kernel settings and the current body. While rebooting, or when
+     * {@code announce} is false, programs are not told: nothing is running to hear it, and the
+     * published list still moves so the next real change is not reported twice.
+     */
+    private void refreshFlaws(ServerPlayer player, boolean announce) {
+        FlawRules.Profile next = FlawRules.evaluate(FlawRegistry.classes(), reading(player));
+        if (announce && !isRebooting()) {
+            for (FlawRules.Change change : FlawRules.changes(publishedFlaws, next.active())) {
+                String className = change.className();
+                String severity = change.severity();
+                fire(ScriptEvents.ON_FLAW_CHANGED, () -> ValueFactory.varargsOf(ValueFactory.valueOf(className), ValueFactory.valueOf(severity)));
+            }
+        }
+        publishedFlaws = next.active();
+        flaws = next;
+        data(player).setDynamicFlaws(next.active().stream()
+                .filter(FlawRules.Hit::dynamic)
+                .map(hit -> new GatewayData.FlawMark(hit.className(), hit.severity().id()))
+                .toList());
+    }
+
+    private FlawRules.Reading reading(ServerPlayer player) {
+        GatewayData data = data(player);
+        return FlawRules.Reading.of(kernel.settings(), programs.size(), data.heat(), bodyEnhancements(),
+                kernel.hookNames().size(), data.tier().hookPoints());
+    }
+
+    private int bodyEnhancements() {
+        int count = 0;
+        for (TimedModifier modifier : modifiers.values()) {
+            String path = modifier.id().getPath();
+            int slash = path.lastIndexOf('/');
+            if (slash >= 0 && BODY_ENHANCEMENTS.contains(path.substring(slash + 1))) {
+                count++;
+            }
+        }
+        return count;
+    }
 
     public void log(String source, String message) {
         log.addLast("[" + source + "] " + message);

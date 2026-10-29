@@ -1,0 +1,7 @@
+{
+  "id": "edge:thermal",
+  "dynamic": true,
+  "rules": [
+    { "when": { "state": "heat", "at_least": 70, "near": 20 }, "severity": "major", "cause": "heat {heat}" }
+  ]
+}

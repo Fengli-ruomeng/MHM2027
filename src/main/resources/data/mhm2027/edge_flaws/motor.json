@@ -1,0 +1,8 @@
+{
+  "id": "edge:motor",
+  "dynamic": true,
+  "rules": [
+    { "when": { "state": "enhancements", "at_least": 1 }, "severity": "minor", "cause": "body enhancements: {enhancements}" },
+    { "when": { "state": "enhancements", "at_least": 3, "near": 1 }, "severity": "major", "cause": "body enhancements: {enhancements}" }
+  ]
+}

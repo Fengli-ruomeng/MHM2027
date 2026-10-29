@@ -31,12 +31,21 @@ public final class ScriptDiagnostics {
     }
 
     public static Result check(String file, String source, int gatewayLevel) {
-        ScriptSummary summary;
+        return check(file, source, gatewayLevel, List.of());
+    }
+
+    /**
+     * @param flaws the loaded flaw classes. The editor passes the datapack registry; tests pass
+     *              the file they are checking. An empty list previews nothing.
+     */
+    public static Result check(String file, String source, int gatewayLevel, List<FlawRules.ClassDef> flaws) {
+        ScriptAnalyzer.Analysis analysis;
         try {
-            summary = ScriptAnalyzer.analyze(file, source, false).summary();
+            analysis = ScriptAnalyzer.analyze(file, source, false);
         } catch (InstallException e) {
             return new Result(false, e.getMessage(), locate(source, e.getMessage()), null, List.of());
         }
+        ScriptSummary summary = analysis.summary();
 
         GatewayTier tier = GatewayTier.of(gatewayLevel);
         List<String> warnings = new ArrayList<>();
@@ -49,6 +58,18 @@ public final class ScriptDiagnostics {
                 String[] lines = source.split("\n", -1);
                 for (String hook : summary.details()) {
                     line = Math.max(line, firstCodeLineContaining(lines, "function " + hook));
+                }
+            }
+            // No fight is running in the editor, so heat, enhancements and program count stay zero.
+            // What remains is the price of the settings, plus core when every hook point is used.
+            if (analysis.kernelSettings() != null && !flaws.isEmpty()) {
+                FlawRules.Profile profile = FlawRules.evaluate(flaws, FlawRules.Reading.of(
+                        analysis.kernelSettings(), 0, 0, 0, hooks, tier.hookPoints()));
+                for (FlawRules.Hit hit : profile.active()) {
+                    warnings.add(FlawRules.warning(hit));
+                    if (line < 0) {
+                        line = headerLine(source);
+                    }
                 }
             }
         } else {

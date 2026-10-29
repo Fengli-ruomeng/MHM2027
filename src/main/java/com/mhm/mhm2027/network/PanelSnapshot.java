@@ -21,7 +21,8 @@ public record PanelSnapshot(
         List<ScriptRow> scripts,
         List<String> log,
         String lockReason,
-        int lockSecondsLeft) implements CustomPacketPayload {
+        int lockSecondsLeft,
+        List<FlawRow> flaws) implements CustomPacketPayload {
 
     /**
      * @param id what it was installed from: "Baseline", a file name, or {@code preset:<id>}
@@ -63,6 +64,19 @@ public record PanelSnapshot(
     }
 
     /**
+     * One flaw the panel shows. {@code approaching} is a near-miss: the severity is the one
+     * the player is close to, and the flaw is not active yet.
+     */
+    public record FlawRow(String className, String severity, String cause, boolean approaching) {
+        static final StreamCodec<RegistryFriendlyByteBuf, FlawRow> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.STRING_UTF8, FlawRow::className,
+                ByteBufCodecs.STRING_UTF8, FlawRow::severity,
+                ByteBufCodecs.STRING_UTF8, FlawRow::cause,
+                ByteBufCodecs.BOOL, FlawRow::approaching,
+                FlawRow::new);
+    }
+
+    /**
      * Something in the player's storage: one of their own files, or a preset written into the gateway.
      *
      * @param id the file name, or {@code preset:<id>}
@@ -85,9 +99,10 @@ public record PanelSnapshot(
             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), PanelSnapshot::log,
             ByteBufCodecs.STRING_UTF8, PanelSnapshot::lockReason,
             ByteBufCodecs.VAR_INT, PanelSnapshot::lockSecondsLeft,
+            FlawRow.STREAM_CODEC.apply(ByteBufCodecs.list()), PanelSnapshot::flaws,
             PanelSnapshot::new);
 
-    public static final PanelSnapshot EMPTY = new PanelSnapshot(KernelInfo.EMPTY, List.of(), List.of(), List.of(), "", 0);
+    public static final PanelSnapshot EMPTY = new PanelSnapshot(KernelInfo.EMPTY, List.of(), List.of(), List.of(), "", 0, List.of());
 
     public boolean rebooting() {
         return lockSecondsLeft > 0;

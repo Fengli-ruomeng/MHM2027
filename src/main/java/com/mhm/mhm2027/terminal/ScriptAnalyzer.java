@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaTable;
 import org.squiddev.cobalt.function.LuaFunction;
@@ -17,9 +18,10 @@ import com.mhm.mhm2027.gateway.GatewayTier;
  */
 public final class ScriptAnalyzer {
     /**
-     * @param presetLevel for a preset, the gateway level it requires; 0 otherwise
+     * @param presetLevel    for a preset, the gateway level it requires; 0 otherwise
+     * @param kernelSettings the kernel header, or null for a program
      */
-    public record Analysis(ScriptSummary summary, int presetLevel, String description) {
+    public record Analysis(ScriptSummary summary, int presetLevel, String description, @Nullable KernelSettings kernelSettings) {
     }
 
     private ScriptAnalyzer() {
@@ -57,7 +59,7 @@ public final class ScriptAnalyzer {
         int level = preset ? presetLevel : apis.stream().mapToInt(ApiSpec::minLevel).max().orElse(0);
         ScriptSummary summary = new ScriptSummary(parsed.name(), parsed.type().id(), parsed.tops(),
                 ScriptCompiler.programRam(parsed.type(), apis), level, apis.stream().map(ApiSpec::id).toList());
-        return new Analysis(summary, presetLevel, preset ? ScriptCompiler.presetDescription(header) : "");
+        return new Analysis(summary, presetLevel, preset ? ScriptCompiler.presetDescription(header) : "", null);
     }
 
     private static Analysis analyzeKernel(LuaSandbox sandbox, String chunk, String source, boolean preset) throws InstallException {
@@ -76,7 +78,7 @@ public final class ScriptAnalyzer {
         int level = preset ? presetLevel : levelForHooks(hooks.size());
         ScriptSummary summary = new ScriptSummary(name, ScriptSummary.KERNEL, settings.topsReserve(),
                 KernelSettings.ramFor(hooks.size()), level, List.copyOf(hooks.keySet()));
-        return new Analysis(summary, presetLevel, preset ? ScriptCompiler.presetDescription(header) : "");
+        return new Analysis(summary, presetLevel, preset ? ScriptCompiler.presetDescription(header) : "", settings);
     }
 
     /** The lowest gateway level with enough hook points for this many hooks. */

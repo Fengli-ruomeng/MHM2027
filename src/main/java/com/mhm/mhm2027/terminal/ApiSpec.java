@@ -52,6 +52,7 @@ public record ApiSpec(String id, String params, boolean kernel, int minLevel, in
     public static final ApiSpec SYS_EVERY = register(new ApiSpec("sys.every", "seconds", false, 0, 1, 1, 0, false));
     public static final ApiSpec SYS_NOTIFY = register(new ApiSpec("sys.notify", "text", true, 0, 2, 1, 0, false));
     public static final ApiSpec SYS_LOG = register(new ApiSpec("sys.log", "text", true, 0, 1, 0, 0, false));
+    public static final ApiSpec SYS_FLAWS = sysRead("sys.flaws");
 
     private static ApiSpec read(String id) {
         return register(new ApiSpec(id, "", false, 0, 1, 1, 0, false));

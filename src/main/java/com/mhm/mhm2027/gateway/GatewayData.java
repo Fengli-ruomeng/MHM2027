@@ -1,5 +1,6 @@
 package com.mhm.mhm2027.gateway;
 
+import java.util.List;
 import java.util.Locale;
 
 import com.mojang.serialization.Codec;
@@ -14,10 +15,20 @@ import net.minecraft.network.codec.StreamCodec;
  * this holds only what changes during play.
  *
  * Units: RAM, Leak and Buffer are in MB. Heat runs from 0 to {@link #MAX_HEAT}.
- * Program RAM and reserved TOPS are owned by the server-side terminal; they are synced
- * to the client for the HUD but never saved, since programs don't survive a logout.
+ * Program RAM, reserved TOPS and dynamic flaws are owned by the server-side terminal; they are
+ * synced to the client for the HUD but never saved, since programs don't survive a logout.
  */
 public class GatewayData {
+    /**
+     * One dynamic flaw the owner's HUD draws. The class name is the id programs see
+     * ({@code thermal}, {@code motor}, {@code core}).
+     */
+    public record FlawMark(String className, String severity) {
+        public static final StreamCodec<RegistryFriendlyByteBuf, FlawMark> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.STRING_UTF8, FlawMark::className,
+                ByteBufCodecs.STRING_UTF8, FlawMark::severity,
+                FlawMark::new);
+    }
     public static final double MAX_HEAT = 100.0;
     public static final String DEFAULT_KERNEL = "Baseline";
 
@@ -27,7 +38,7 @@ public class GatewayData {
             Codec.DOUBLE.optionalFieldOf("leak", 0.0).forGetter(GatewayData::leakMb),
             Codec.DOUBLE.optionalFieldOf("heat", 0.0).forGetter(GatewayData::heat),
             Codec.STRING.optionalFieldOf("kernel", DEFAULT_KERNEL).forGetter(GatewayData::kernel)
-    ).apply(instance, (level, buffer, leak, heat, kernel) -> new GatewayData(level, buffer, leak, heat, kernel, 0, 0)));
+    ).apply(instance, (level, buffer, leak, heat, kernel) -> new GatewayData(level, buffer, leak, heat, kernel, 0, 0, List.of())));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, GatewayData> STREAM_CODEC = StreamCodec.composite(
             ByteBufCodecs.VAR_INT, GatewayData::level,
@@ -37,6 +48,7 @@ public class GatewayData {
             ByteBufCodecs.STRING_UTF8, GatewayData::kernel,
             ByteBufCodecs.VAR_INT, GatewayData::programRamMb,
             ByteBufCodecs.VAR_INT, GatewayData::topsInUse,
+            FlawMark.STREAM_CODEC.apply(ByteBufCodecs.list()), GatewayData::dynamicFlaws,
             GatewayData::new);
 
     private int level;
@@ -46,9 +58,11 @@ public class GatewayData {
     private String kernel;
     private int programRamMb;
     private int topsInUse;
+    private List<FlawMark> dynamicFlaws;
     private boolean dirty;
 
-    private GatewayData(int level, double bufferMb, double leakMb, double heat, String kernel, int programRamMb, int topsInUse) {
+    private GatewayData(int level, double bufferMb, double leakMb, double heat, String kernel, int programRamMb, int topsInUse,
+                        List<FlawMark> dynamicFlaws) {
         this.level = Math.clamp(level, GatewayTier.MIN_LEVEL, GatewayTier.MAX_LEVEL);
         this.bufferMb = Math.clamp(bufferMb, 0, tier().bufferMb());
         this.leakMb = Math.max(0, leakMb);
@@ -56,11 +70,12 @@ public class GatewayData {
         this.kernel = kernel;
         this.programRamMb = programRamMb;
         this.topsInUse = topsInUse;
+        this.dynamicFlaws = List.copyOf(dynamicFlaws);
     }
 
     /** A fresh gateway at the given level, with a full Buffer and the Baseline kernel. */
     public static GatewayData fresh(GatewayTier tier) {
-        return new GatewayData(tier.level(), tier.bufferMb(), 0, 0, DEFAULT_KERNEL, 0, 0);
+        return new GatewayData(tier.level(), tier.bufferMb(), 0, 0, DEFAULT_KERNEL, 0, 0, List.of());
     }
 
     public GatewayTier tier() {
@@ -98,6 +113,11 @@ public class GatewayData {
         return topsInUse;
     }
 
+    /** Dynamic flaws active right now. Static flaws are not synced; the panel gets those in its snapshot. */
+    public List<FlawMark> dynamicFlaws() {
+        return dynamicFlaws;
+    }
+
     /** Free RAM = capacity - kernel and programs - Leak. */
     public double freeRamMb() {
         return tier().ramMb() - programRamMb - leakMb;
@@ -126,6 +146,7 @@ public class GatewayData {
             leakMb = 0;
             heat = 0;
             bufferMb = tier().bufferMb();
+            dynamicFlaws = List.of();
         } else {
             bufferMb = Math.min(bufferMb, tier().bufferMb());
         }
@@ -152,6 +173,15 @@ public class GatewayData {
         markDirty();
     }
 
+    /** Called by the terminal when the dynamic set changes. Same contents do not sync again. */
+    public void setDynamicFlaws(List<FlawMark> flaws) {
+        List<FlawMark> next = List.copyOf(flaws);
+        if (!next.equals(dynamicFlaws)) {
+            dynamicFlaws = next;
+            markDirty();
+        }
+    }
+
     /** Called by the terminal every tick; only marks the data dirty when something changed. */
     public void setUsage(int ramMb, int tops) {
         if (ramMb != programRamMb || tops != topsInUse) {
@@ -165,6 +195,7 @@ public class GatewayData {
     public void resetBody() {
         leakMb = 0;
         heat = 0;
+        dynamicFlaws = List.of();
         markDirty();
     }
 

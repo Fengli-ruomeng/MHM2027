@@ -202,6 +202,18 @@ final class Apis {
             log(terminal, host.get(), args);
             return Constants.NONE;
         });
+        api(sys, ApiSpec.SYS_FLAWS, terminal, host, (player, args) -> {
+            LuaTable list = new LuaTable();
+            int index = 1;
+            for (FlawRules.Hit hit : terminal.flaws()) {
+                LuaTable entry = new LuaTable();
+                entry.rawset("class", valueOf(hit.className()));
+                entry.rawset("severity", valueOf(hit.severity().id()));
+                entry.rawset("cause", valueOf(hit.cause()));
+                list.rawset(index++, entry);
+            }
+            return list;
+        });
         awaitApi(sys, ApiSpec.SYS_SLEEP, terminal, host, (player, args) -> {
             double seconds = args.arg(1).checkDouble();
             if (seconds < 0.05 || seconds > 60) {

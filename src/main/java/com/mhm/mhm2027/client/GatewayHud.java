@@ -15,8 +15,9 @@ import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.client.gui.GuiLayer;
 
 /**
- * A compact gateway readout in the top-left corner: level, RAM (with Leak), Buffer and Heat.
- * Hidden for Null gateways, with F1, and while the F3 debug screen is open.
+ * A compact gateway readout in the top-left corner: level, RAM (with Leak), Buffer, Heat,
+ * and an icon while a dynamic flaw is active. Hidden for Null gateways, with F1, and while
+ * the F3 debug screen is open.
  */
 public class GatewayHud implements GuiLayer {
     private static final int X = 4;
@@ -27,6 +28,7 @@ public class GatewayHud implements GuiLayer {
 
     private static final int COLOR_TEXT = 0xFFE0E0E0;
     private static final int COLOR_TITLE = 0xFF55FFFF;
+    private static final int COLOR_WARN = 0xFFFFC040;
     private static final int COLOR_ALERT = 0xFFFF5555;
     private static final int COLOR_BAR_BACK = 0x80000000;
     private static final int COLOR_LEAK = 0xFFB040FF;
@@ -71,6 +73,15 @@ public class GatewayHud implements GuiLayer {
             graphics.text(font, Component.translatable("mhm2027.hud.heat", Math.round(data.heat())), X, y, COLOR_TEXT);
             y += LINE_HEIGHT - 1;
             bar(graphics, y, data.heat() / GatewayData.MAX_HEAT, COLOR_HEAT);
+            y += BAR_HEIGHT;
+        }
+        if (!data.dynamicFlaws().isEmpty()) {
+            y += 3;
+            boolean severe = data.dynamicFlaws().stream().anyMatch(flaw -> !flaw.severity().equals("minor"));
+            int color = severe ? COLOR_ALERT : COLOR_WARN;
+            String names = String.join(", ", data.dynamicFlaws().stream().map(GatewayData.FlawMark::className).toList());
+            graphics.fill(X, y + 2, X + 5, y + 7, color);
+            graphics.text(font, Component.translatable("mhm2027.hud.flaws", names), X + 8, y, color);
         }
     }
 

@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.terminal.FlawRegistry;
 import com.mhm.mhm2027.terminal.InstallException;
 import com.mhm.mhm2027.terminal.ScriptDiagnostics;
 import com.mhm.mhm2027.terminal.ScriptStore;
@@ -94,7 +95,8 @@ public final class EditorService {
             return;
         }
         LAST_CHECK.put(player.getUUID(), now);
-        ScriptDiagnostics.Result result = ScriptDiagnostics.check(request.name(), request.content(), Terminals.level(player));
+        ScriptDiagnostics.Result result = ScriptDiagnostics.check(request.name(), request.content(), Terminals.level(player),
+                FlawRegistry.classes());
         ScriptSummary summary = result.summary();
         PacketDistributor.sendToPlayer(player, new EditorCheck(request.requestId(), result.ok(), result.message(), result.line(),
                 summary == null ? "" : summary.kind(), summary == null ? 0 : summary.tops(), summary == null ? 0 : summary.ramMb(),

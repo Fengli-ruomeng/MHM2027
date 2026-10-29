@@ -11,7 +11,10 @@ public final class ScriptEvents {
     public static final String ON_HIT_TAKEN = "on_hit_taken";
     public static final String ON_HIT_DEALT = "on_hit_dealt";
     public static final String ON_KILL = "on_kill";
-    public static final List<String> PROGRAM_EVENTS = List.of(ON_START, ON_STOP, ON_RUN, ON_TIMER, ON_HIT_TAKEN, ON_HIT_DEALT, ON_KILL);
+    /** A flaw appeared, changed severity, or cleared. The severity is {@code none} when it cleared. */
+    public static final String ON_FLAW_CHANGED = "on_flaw_changed";
+    public static final List<String> PROGRAM_EVENTS = List.of(
+            ON_START, ON_STOP, ON_RUN, ON_TIMER, ON_HIT_TAKEN, ON_HIT_DEALT, ON_KILL, ON_FLAW_CHANGED);
 
     public static final String ON_ACCESS_REQUEST = "on_access_request";
     public static final String ON_SESSION_OPENED = "on_session_opened";

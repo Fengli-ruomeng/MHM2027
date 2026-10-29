@@ -4,6 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 class ScriptDiagnosticsTest {
@@ -61,6 +67,31 @@ class ScriptDiagnosticsTest {
         assertTrue(result.ok());
         assertEquals(1, result.warnings().size());
         assertEquals(3, result.line());
+    }
+
+    @Test
+    void aKernelPreviewsTheFlawsItsSettingsCreate() throws Exception {
+        Path folder = Path.of("src/main/resources/data/mhm2027/edge_flaws");
+        List<FlawRules.ClassDef> flaws = new ArrayList<>();
+        for (String name : List.of("memory", "intake", "scheduler", "thermal", "motor", "core")) {
+            flaws.add(FlawRules.parse(Files.readString(folder.resolve(name + ".json"), StandardCharsets.UTF_8)));
+        }
+        ScriptDiagnostics.Result result = ScriptDiagnostics.check("Skip", """
+                -- note
+                kernel { name = "Skip", verify = "skip", schedule = "priority" }
+                function on_panic(reason) end
+                function on_low_ram(free) end
+                """, 0, flaws);
+        assertTrue(result.ok());
+        assertEquals(List.of(
+                "memory critical: verify = skip",
+                "scheduler minor: schedule = priority",
+                "core minor: using all 2 hook points"), result.warnings());
+        assertEquals(1, result.line());
+
+        ScriptDiagnostics.Result program = ScriptDiagnostics.check("Plain", "program { name = \"Plain\" }\n", 0, flaws);
+        assertTrue(program.ok());
+        assertTrue(program.warnings().isEmpty());
     }
 
     @Test

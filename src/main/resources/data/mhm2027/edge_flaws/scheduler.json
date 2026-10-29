@@ -1,0 +1,17 @@
+{
+  "id": "edge:scheduler",
+  "dynamic": false,
+  "rules": [
+    { "when": { "setting": "schedule", "equals": "priority" }, "severity": "minor", "cause": "schedule = priority" },
+    {
+      "when": {
+        "all": [
+          { "setting": "schedule", "equals": "priority" },
+          { "state": "programs", "at_least": 3, "near": 1 }
+        ]
+      },
+      "severity": "major",
+      "cause": "schedule = priority, {programs} programs running"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import com.mhm.mhm2027.Mhm2027;
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.terminal.FlawRules;
 import com.mhm.mhm2027.terminal.InstallException;
 import com.mhm.mhm2027.terminal.Kernel;
 import com.mhm.mhm2027.terminal.Program;
@@ -50,6 +51,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
  * /edge ps                           running programs and what they use
  * /edge log                          the last lines of the terminal log
  * /edge kernel [install <name>]      show or swap the kernel ("Baseline" is built in)
+ * /edge flaws                        static and dynamic flaws, including ones close to firing
  * /edge reboot                       stop everything, with a short debuff
  * /edge set level|buffer|leak|heat <players> <value>   (op, for testing)
  */
@@ -99,6 +101,7 @@ public class EdgeCommand {
                         .then(Commands.literal("install")
                                 .then(Commands.argument("script", StringArgumentType.word()).suggests(SCRIPTS)
                                         .executes(ctx -> installKernel(ctx.getSource(), StringArgumentType.getString(ctx, "script"))))))
+                .then(Commands.literal("flaws").executes(ctx -> showFlaws(ctx.getSource())))
                 .then(Commands.literal("reboot").executes(ctx -> reboot(ctx.getSource())))
                 .then(Commands.literal("set")
                         .then(setter("level", IntegerArgumentType.integer(GatewayTier.MIN_LEVEL, GatewayTier.MAX_LEVEL),
@@ -238,6 +241,38 @@ public class EdgeCommand {
             source.sendFailure(Component.literal(e.getMessage()));
             return 0;
         }
+    }
+
+    private static int showFlaws(CommandSourceStack source) throws CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        if (player.getData(ModAttachments.GATEWAY).tier().isNull()) {
+            source.sendFailure(Component.translatable("mhm2027.terminal.null"));
+            return 0;
+        }
+        FlawRules.Profile profile = Terminals.get(player).flawProfile();
+        MutableComponent out = Component.translatable("mhm2027.terminal.flaws_header").withStyle(ChatFormatting.AQUA);
+        if (profile.active().isEmpty() && profile.approaching().isEmpty()) {
+            out.append("\n").append(Component.translatable("mhm2027.terminal.none").withStyle(ChatFormatting.GRAY));
+        }
+        for (FlawRules.Hit hit : profile.active()) {
+            out.append("\n").append(Component.translatable("mhm2027.terminal.flaw_line", hit.className(),
+                    Component.translatable("mhm2027.flaw." + hit.severity().id()), hit.cause()).withStyle(flawColor(hit.severity().id())));
+        }
+        for (FlawRules.Approach approach : profile.approaching()) {
+            out.append("\n").append(Component.translatable("mhm2027.terminal.flaw_close", approach.className(),
+                    Component.translatable("mhm2027.flaw." + approach.severity().id()), approach.cause()).withStyle(ChatFormatting.GRAY));
+        }
+        source.sendSuccess(() -> out, false);
+        return profile.active().size();
+    }
+
+    private static ChatFormatting flawColor(String severity) {
+        return switch (severity) {
+            case "critical" -> ChatFormatting.RED;
+            case "major" -> ChatFormatting.GOLD;
+            case "minor" -> ChatFormatting.YELLOW;
+            default -> ChatFormatting.GRAY;
+        };
     }
 
     private static int reboot(CommandSourceStack source) throws CommandSyntaxException {

@@ -1,0 +1,7 @@
+{
+  "id": "edge:memory",
+  "rules": [
+    { "when": { "setting": "verify", "equals": "fast" }, "severity": "minor" },
+    { "when": { "setting": "verify", "equals": "skip" }, "severity": "critical" }
+  ]
+}

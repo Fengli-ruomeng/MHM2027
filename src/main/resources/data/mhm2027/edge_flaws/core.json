@@ -1,0 +1,12 @@
+{
+  "id": "edge:core",
+  "dynamic": true,
+  "rules": [
+    {
+      "when": { "state": "hooks_spare", "at_most": 0, "near": 1 },
+      "severity": "minor",
+      "cause": "using all {hook_points} hook points",
+      "close": "{hooks} of {hook_points} hook points"
+    }
+  ]
+}

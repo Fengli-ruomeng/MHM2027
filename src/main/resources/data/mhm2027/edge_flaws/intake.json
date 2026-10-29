@@ -1,0 +1,7 @@
+{
+  "id": "edge:intake",
+  "rules": [
+    { "when": { "setting": "rate_limit", "at_least": 8, "near": 2 }, "severity": "minor", "cause": "rate_limit {rate_limit}" },
+    { "when": { "setting": "rate_limit", "at_least": 12, "near": 2 }, "severity": "major", "cause": "rate_limit {rate_limit}" }
+  ]
+}

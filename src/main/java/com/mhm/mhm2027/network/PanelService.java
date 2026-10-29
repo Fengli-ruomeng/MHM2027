@@ -9,6 +9,7 @@ import java.util.UUID;
 import com.mhm.mhm2027.Mhm2027;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.item.ChipActions;
+import com.mhm.mhm2027.terminal.FlawRules;
 import com.mhm.mhm2027.terminal.InstallException;
 import com.mhm.mhm2027.terminal.Kernel;
 import com.mhm.mhm2027.terminal.KernelSettings;
@@ -158,7 +159,16 @@ public final class PanelService {
                     new PanelSnapshot.ScriptRow(preset.terminalId(), preset.summary().name(), preset.isKernel(), true)));
         }
 
+        List<PanelSnapshot.FlawRow> flaws = new ArrayList<>();
+        FlawRules.Profile profile = terminal.flawProfile();
+        for (FlawRules.Hit hit : profile.active()) {
+            flaws.add(new PanelSnapshot.FlawRow(hit.className(), hit.severity().id(), hit.cause(), false));
+        }
+        for (FlawRules.Approach approach : profile.approaching()) {
+            flaws.add(new PanelSnapshot.FlawRow(approach.className(), approach.severity().id(), approach.cause(), true));
+        }
+
         return new PanelSnapshot(kernelInfo, programs, scripts, terminal.log(),
-                terminal.isRebooting() ? terminal.lockReason() : "", terminal.isRebooting() ? terminal.lockSecondsLeft() : 0);
+                terminal.isRebooting() ? terminal.lockReason() : "", terminal.isRebooting() ? terminal.lockSecondsLeft() : 0, flaws);
     }
 }

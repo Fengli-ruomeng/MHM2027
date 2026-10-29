@@ -6,9 +6,9 @@ import java.util.Set;
 import org.squiddev.cobalt.LuaTable;
 
 /**
- * The settings half of a kernel, from the {@code kernel { ... }} header. These are where the
- * flaw trade-offs will come from once cyber combat exists. For now gc changes how fast Leak
- * clears and what that costs; the others are stored and shown but have no effect yet.
+ * The settings half of a kernel, from the {@code kernel { ... }} header. gc changes how fast
+ * Leak clears and what that costs. schedule, verify and rate_limit are the static flaw
+ * trade-offs: {@link FlawRules} reads them, and nothing else in the terminal does yet.
  */
 public record KernelSettings(String schedule, String gc, String verify, int rateLimit) {
     public static final KernelSettings DEFAULT = new KernelSettings("fair", "normal", "full", 4);
