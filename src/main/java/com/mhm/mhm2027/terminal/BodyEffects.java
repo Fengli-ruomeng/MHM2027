@@ -37,7 +37,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
  * work on mobs too, which have no terminal of their own.
  */
 @EventBusSubscriber(modid = Mhm2027.MODID)
-final class BodyEffects {
+public final class BodyEffects {
     private record Timed(ServerLevel level, UUID entity, Holder<Attribute> attribute, Identifier id, long expiresAt) {
     }
 
@@ -49,7 +49,7 @@ final class BodyEffects {
     }
 
     /** Heavy slowness and no jumping for a while. */
-    static void neutralize(LivingEntity target, int ticks) {
+    public static void neutralize(LivingEntity target, int ticks) {
         target.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, ticks, 5, false, true, true));
         addTimed(target, Attributes.JUMP_STRENGTH, NO_JUMP, -1.0, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, ticks);
     }

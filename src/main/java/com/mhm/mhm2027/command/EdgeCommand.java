@@ -6,10 +6,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.ObjDoubleConsumer;
 
+import org.jspecify.annotations.Nullable;
+
 import com.mhm.mhm2027.Mhm2027;
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.mob.WiredMobs;
 import com.mhm.mhm2027.terminal.FlawRules;
 import com.mhm.mhm2027.terminal.InstallException;
 import com.mhm.mhm2027.terminal.KernelSettings;
@@ -36,7 +39,9 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -111,7 +116,8 @@ public class EdgeCommand {
                         .then(setter("buffer", DoubleArgumentType.doubleArg(0), GatewayData::setBufferMb))
                         .then(setter("leak", DoubleArgumentType.doubleArg(0), GatewayData::setLeakMb))
                         .then(setter("heat", DoubleArgumentType.doubleArg(0, GatewayData.MAX_HEAT), GatewayData::setHeat)))
-                .then(mobKernel()));
+                .then(mobKernel())
+                .then(wire()));
     }
 
     // region Status
@@ -343,6 +349,27 @@ public class EdgeCommand {
         }
         ctx.getSource().sendSuccess(() -> Component.translatable("mhm2027.command.mob_kernel", mobs.size()), true);
         return mobs.size();
+    }
+
+    /** /edge wire: turns zombies and skeletons into their wired versions, at their natural level or a given one. */
+    private static LiteralArgumentBuilder<CommandSourceStack> wire() {
+        return Commands.literal("wire")
+                .then(Commands.argument("targets", EntityArgument.entities())
+                        .executes(ctx -> wire(ctx, null))
+                        .then(Commands.argument("level", IntegerArgumentType.integer(0, GatewayTier.MAX_LEVEL))
+                                .executes(ctx -> wire(ctx, IntegerArgumentType.getInteger(ctx, "level")))));
+    }
+
+    private static int wire(CommandContext<CommandSourceStack> ctx, @Nullable Integer level) throws CommandSyntaxException {
+        int wired = 0;
+        for (Entity entity : EntityArgument.getEntities(ctx, "targets")) {
+            if (entity instanceof Mob mob && (level == null ? WiredMobs.wire(mob) : WiredMobs.wire(mob, level))) {
+                wired++;
+            }
+        }
+        int count = wired;
+        ctx.getSource().sendSuccess(() -> Component.translatable("mhm2027.command.wire", count), true);
+        return count;
     }
 
     private static SuggestionProvider<CommandSourceStack> choices(List<String> options) {

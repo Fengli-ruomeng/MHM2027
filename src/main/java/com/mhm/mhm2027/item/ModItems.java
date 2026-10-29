@@ -24,6 +24,8 @@ public final class ModItems {
             properties -> new ChipItem(properties, false), properties -> properties.stacksTo(1));
     public static final DeferredItem<ChipItem> KERNEL_CHIP = ITEMS.registerItem("kernel_chip",
             properties -> new ChipItem(properties, true), properties -> properties.stacksTo(1));
+    /** Dropped by gateway mobs; every firmware needs them. */
+    public static final DeferredItem<Item> DATA_SHARD = ITEMS.registerSimpleItem("data_shard");
 
     /** The presets this mod ships, for the creative tab. Loot tables and other datapacks can add more. */
     private static final List<Identifier> BUILTIN_PROGRAM_PRESETS = List.of(
@@ -36,6 +38,7 @@ public final class ModItems {
             .icon(() -> PROGRAM_CHIP.get().getDefaultInstance())
             .displayItems((parameters, output) -> {
                 output.accept(BLANK_CHIP.get());
+                output.accept(DATA_SHARD.get());
                 BUILTIN_PROGRAM_PRESETS.forEach(preset -> output.accept(ChipActions.presetChip(preset, false)));
                 BUILTIN_KERNEL_PRESETS.forEach(preset -> output.accept(ChipActions.presetChip(preset, true)));
             }).build());

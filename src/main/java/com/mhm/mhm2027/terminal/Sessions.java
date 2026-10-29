@@ -50,8 +50,8 @@ public final class Sessions {
     private record Pair(UUID attacker, UUID target) {
     }
 
-    /** One open session. */
-    static final class Session {
+    /** One open session. The attacker is a player or a gateway mob, in the target's world. */
+    public static final class Session {
         final UUID attacker;
         final UUID target;
         final ServerLevel level;
@@ -72,13 +72,22 @@ public final class Sessions {
             this.expiresAt = expiresAt;
         }
 
-        @Nullable LivingEntity target() {
-            Entity entity = level.getEntity(target);
-            return entity instanceof LivingEntity living && living.isAlive() ? living : null;
+        public @Nullable LivingEntity target() {
+            return alive(target);
         }
 
-        @Nullable ServerPlayer attackerPlayer() {
-            return server.getPlayerList().getPlayer(attacker);
+        /** The attacker, if it is still alive in the target's world. */
+        public @Nullable LivingEntity attackerEntity() {
+            return alive(attacker);
+        }
+
+        public boolean isOpen() {
+            return open;
+        }
+
+        private @Nullable LivingEntity alive(UUID uuid) {
+            Entity entity = level.getEntity(uuid);
+            return entity instanceof LivingEntity living && living.isAlive() ? living : null;
         }
 
         long now() {
@@ -105,9 +114,10 @@ public final class Sessions {
 
     // region Registry
 
-    static Session open(ServerPlayer attacker, LivingEntity target, @Nullable String method) {
-        Session session = new Session(attacker.getUUID(), target.getUUID(), (ServerLevel) target.level(), method,
-                attacker.level().getServer().getTickCount() + AccessRules.SESSION_TICKS);
+    static Session open(LivingEntity attacker, LivingEntity target, @Nullable String method) {
+        ServerLevel level = (ServerLevel) target.level();
+        Session session = new Session(attacker.getUUID(), target.getUUID(), level, method,
+                level.getServer().getTickCount() + AccessRules.SESSION_TICKS);
         OPEN.add(session);
         return session;
     }
@@ -121,15 +131,14 @@ public final class Sessions {
         return null;
     }
 
-    static void close(Session session, String reason) {
+    public static void close(Session session, String reason) {
         if (!session.open) {
             return;
         }
         session.open = false;
         OPEN.remove(session);
         lockout(session.attacker, session.target, AccessRules.SESSION_LOCKOUT_TICKS, session.server);
-        ServerPlayer attacker = session.attackerPlayer();
-        if (attacker != null) {
+        if (session.server.getPlayerList().getPlayer(session.attacker) instanceof ServerPlayer attacker) {
             Terminals.existing(attacker).ifPresent(terminal ->
                     terminal.log("session", "closed on " + Addresses.of(session.target) + " (" + reason + ")"));
         }
@@ -172,11 +181,10 @@ public final class Sessions {
             return;
         }
         long now = event.getServer().getTickCount();
-        for (Iterator<Session> it = List.copyOf(OPEN).iterator(); it.hasNext(); ) {
-            Session session = it.next();
+        for (Session session : List.copyOf(OPEN)) {
             if (now >= session.expiresAt) {
                 close(session, "timed out");
-            } else if (session.target() == null || session.attackerPlayer() == null) {
+            } else if (session.target() == null || session.attackerEntity() == null) {
                 close(session, "gone");
             }
         }

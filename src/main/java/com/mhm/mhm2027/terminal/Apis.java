@@ -356,8 +356,7 @@ final class Apis {
                 if (entity != null && Gateways.targetable(entity, viewer)) {
                     result = report(entity, viewer);
                     if (entity instanceof ServerPlayer scanned) {
-                        Terminals.existing(scanned).ifPresent(other ->
-                                other.fire(ScriptEvents.ON_SCANNED, () -> EntityHandles.of(viewer, scanned)));
+                        Terminals.scanned(scanned, viewer);
                     }
                 }
             }

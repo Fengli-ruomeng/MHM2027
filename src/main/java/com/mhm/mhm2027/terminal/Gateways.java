@@ -17,12 +17,12 @@ import net.minecraft.world.entity.player.Player;
  * Questions about other entities' gateways, shared by the remote APIs. Reading a mob never
  * creates gateway data on it: ordinary vanilla mobs stay untouched (LV-1, no gateway).
  */
-final class Gateways {
+public final class Gateways {
     private Gateways() {
     }
 
     /** The entity's gateway, or null for anything without one: vanilla mobs, Null players, spectators, the dead. */
-    static @Nullable GatewayData of(Entity entity) {
+    public static @Nullable GatewayData of(Entity entity) {
         if (!(entity instanceof LivingEntity living) || !living.isAlive()) {
             return null;
         }

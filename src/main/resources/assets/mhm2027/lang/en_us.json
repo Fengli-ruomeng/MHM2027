@@ -151,5 +151,13 @@
   "mhm2027.panel.state.escalating": "escalating",
   "mhm2027.configuration.defence": "Defence",
   "mhm2027.configuration.denyBufferMb": "Buffer Cost to Deny (MB)",
-  "mhm2027.configuration.endSessionBufferMb": "Buffer Cost to End a Session (MB)"
+  "mhm2027.configuration.endSessionBufferMb": "Buffer Cost to End a Session (MB)",
+  "item.mhm2027.data_shard": "Data Shard",
+  "mhm2027.command.wire": "Wired %s mob(s)",
+  "mhm2027.configuration.mobs": "Mobs",
+  "mhm2027.configuration.wiredMobs": "Wired Mobs Spawn",
+  "mhm2027.configuration.wiredStartDay": "First Day of Wired Mobs",
+  "mhm2027.configuration.wiredFullDay": "Day of Full Wired Chance",
+  "mhm2027.configuration.wiredMaxChance": "Maximum Wired Chance",
+  "mhm2027.configuration.randomMobKernels": "Random Mob Kernels"
 }

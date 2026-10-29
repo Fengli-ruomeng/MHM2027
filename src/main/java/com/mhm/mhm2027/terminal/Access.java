@@ -3,8 +3,6 @@ package com.mhm.mhm2027.terminal;
 import static org.squiddev.cobalt.ValueFactory.valueOf;
 import static org.squiddev.cobalt.ValueFactory.varargsOf;
 
-import java.util.UUID;
-
 import org.jspecify.annotations.Nullable;
 import org.squiddev.cobalt.Constants;
 import org.squiddev.cobalt.LuaError;
@@ -21,13 +19,14 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 
 /**
- * Access attempts: the short contest that opens a session. The attacker's program waits on
- * it (remote.access and s.escalate). The defender's kernel decides once, at the start, through
- * on_access_request: allow, deny (pays Buffer), delay (buys time) or resist (commits TOPS and
- * runs hot). Mobs have no hooks and always allow.
+ * Access attempts: the short contest that opens a session. The attacker is a player's program
+ * (remote.access, s.escalate) or a gateway mob's native kernel; both go through the same rules.
+ * The defender's kernel decides once, at the start, through on_access_request: allow, deny
+ * (pays Buffer), delay (buys time) or resist (commits TOPS and runs hot). Mobs have no hooks
+ * and always allow.
  */
-final class Access {
-    static final String FORCE = "force";
+public final class Access {
+    public static final String FORCE = "force";
 
     /** What a kernel's on_access_request answered. */
     record Decision(Kind kind, double seconds, int tops) {
@@ -36,6 +35,19 @@ final class Access {
         }
 
         static final Decision ALLOW = new Decision(Kind.ALLOW, 0, 0);
+    }
+
+    /** Who is attempting access: a player's program, or a gateway mob. */
+    public interface Attacker {
+        LivingEntity entity();
+
+        /** The TOPS committed to the attempt. */
+        int tops();
+
+        /** Called when the attempt opens a session; the result goes back to whoever is waiting. */
+        Varargs opened(Sessions.Session session);
+
+        void log(String message);
     }
 
     private Access() {
@@ -77,70 +89,79 @@ final class Access {
 
     // region Starting
 
-    /** remote.access(target, method): checks, the defender's decision, then the timed contest. */
-    static LuaSandbox.Awaitable begin(Terminal terminal, Program program, ServerPlayer attacker, LuaValue handle, String method) throws LuaError {
-        if (!method.equals(FORCE) && FlawRegistry.classes().stream().noneMatch(def -> def.className().equals(method))) {
+    /** remote.access(target, method) from a program. */
+    static LuaSandbox.Awaitable begin(Terminal terminal, Program program, ServerPlayer player, LuaValue handle, String method) throws LuaError {
+        if (!isMethod(method)) {
             throw new LuaError("method must be \"force\" or a flaw class such as \"memory\"");
         }
-        GatewayTier tier = Terminal.data(attacker).tier();
-        LivingEntity target = EntityHandles.resolve(handle, attacker, tier.accessRange());
-        if (target == null || !Gateways.targetable(target, attacker)) {
+        GatewayTier tier = Terminal.data(player).tier();
+        LivingEntity target = EntityHandles.resolve(handle, player, tier.accessRange());
+        if (target == null || !Gateways.targetable(target, player)) {
             return Finished.fail("out_of_range");
         }
-        if (Sessions.lockedOut(attacker.getUUID(), target.getUUID(), attacker.level().getServer())) {
+        return start(programAttacker(terminal, program, player), target, method);
+    }
+
+    /**
+     * Starts an attempt on a target that is already known to be in range. Shared by programs
+     * and mobs: lockouts, an existing session, a rebooting target and wrong guesses all end it
+     * at once; otherwise the defender decides and the contest begins.
+     */
+    public static LuaSandbox.Awaitable start(Attacker attacker, LivingEntity target, String method) {
+        LivingEntity entity = attacker.entity();
+        if (Sessions.lockedOut(entity.getUUID(), target.getUUID(), entity.level().getServer())) {
             return Finished.fail("cooldown");
         }
-        Sessions.Session existing = Sessions.find(attacker.getUUID(), target.getUUID());
+        Sessions.Session existing = Sessions.find(entity.getUUID(), target.getUUID());
         if (existing != null) {
-            return new Finished(Sessions.toLua(existing, program, attacker));
+            return new Finished(attacker.opened(existing));
         }
-        Terminal defender = target instanceof ServerPlayer player ? Terminals.existing(player).orElse(null) : null;
+        Terminal defender = defenderOf(target);
         if (defender != null && defender.isRebooting()) {
             return Finished.fail("rebooting");
         }
-
         FlawSeverity matched = FlawSeverity.NONE;
         if (!method.equals(FORCE)) {
             matched = severityOf(target, method);
             if (matched == FlawSeverity.NONE) {
                 // A wrong guess fails at once and warns the target.
-                warn(target, defender, attacker, "mhm2027.access.wrong_guess", method);
+                warn(target, defender, entity, "mhm2027.access.wrong_guess", method);
                 return Finished.fail("no_flaw");
             }
         }
-        return contest(attacker, program, target, defender, method, matched, false, null);
+        return contest(attacker, target, defender, method, matched, false, null);
     }
 
     /** s.escalate(): a second, shorter attempt under the same rules; success makes the session root. */
-    static LuaSandbox.Awaitable escalate(Sessions.Session session, Program program) throws LuaError {
-        ServerPlayer attacker = session.attackerPlayer();
+    static LuaSandbox.Awaitable escalate(Sessions.Session session, Program program) {
         LivingEntity target = session.target();
-        if (!session.open || attacker == null || target == null) {
+        if (!session.open || target == null || !(session.attackerEntity() instanceof ServerPlayer player)) {
             return Finished.fail("closed");
         }
         if (session.root) {
             return new Finished(Constants.TRUE);
         }
-        Terminal defender = target instanceof ServerPlayer player ? Terminals.existing(player).orElse(null) : null;
+        Terminal terminal = Terminals.existing(player).orElse(null);
         String method = session.method == null ? FORCE : session.method;
         FlawSeverity matched = session.method == null ? FlawSeverity.NONE : severityOf(target, session.method);
-        return contest(attacker, program, target, defender, method, matched, true, session);
+        return contest(programAttacker(terminal, program, player), target, defenderOf(target), method, matched, true, session);
     }
 
-    private static LuaSandbox.Awaitable contest(ServerPlayer attacker, Program program, LivingEntity target, @Nullable Terminal defender,
-                                                String method, FlawSeverity matched, boolean escalate, Sessions.@Nullable Session session) {
-        int attackerTops = program.tops();
+    private static LuaSandbox.Awaitable contest(Attacker attacker, LivingEntity target, @Nullable Terminal defender, String method,
+                                                FlawSeverity matched, boolean escalate, Sessions.@Nullable Session session) {
+        LivingEntity entity = attacker.entity();
+        int attackerTops = attacker.tops();
         int defenderTops = defender != null ? defender.kernel().topsReserve() : Sessions.mobDefence(target);
         Decision decision = Decision.ALLOW;
         if (defender != null) {
-            decision = defender.decideAccess(attacker, method, attackerTops, escalate);
+            decision = defender.decideAccess(entity, method, attackerTops, escalate);
             if (decision.kind() == Decision.Kind.DENY) {
                 if (defender.spendBuffer(Config.DENY_BUFFER_MB.get())) {
-                    Sessions.lockout(attacker.getUUID(), target.getUUID(), AccessRules.DENY_LOCKOUT_TICKS, attacker.level().getServer());
-                    defender.log("kernel", "denied " + Addresses.of(attacker.getUUID()));
+                    Sessions.lockout(entity.getUUID(), target.getUUID(), AccessRules.DENY_LOCKOUT_TICKS, entity.level().getServer());
+                    defender.log("kernel", "denied " + Addresses.of(entity.getUUID()));
                     return Finished.fail("denied");
                 }
-                defender.log("kernel", "couldn't deny " + Addresses.of(attacker.getUUID()) + ": not enough Buffer");
+                defender.log("kernel", "couldn't deny " + Addresses.of(entity.getUUID()) + ": not enough Buffer");
                 decision = Decision.ALLOW;
             }
         }
@@ -153,30 +174,28 @@ final class Access {
             defenderTops += defender.commitResist(decision.tops(), estimate);
         }
         int ticks = AccessRules.durationTicks(base, attackerTops, defenderTops, delay, escalate);
-        warn(target, defender, attacker, escalate ? "mhm2027.access.escalating" : "mhm2027.access.attempt", method);
-        return new Attempt(attacker.getUUID(), target, defender, program, method, escalate, session, ticks);
+        warn(target, defender, entity, escalate ? "mhm2027.access.escalating" : "mhm2027.access.attempt", method);
+        return new Attempt(attacker, target, defender, method, escalate, session, ticks);
     }
 
     // endregion
 
     /** The contest itself: waits out its time, then opens (or escalates) the session. */
     private static final class Attempt implements LuaSandbox.Awaitable {
-        private final UUID attacker;
+        private final Attacker attacker;
         private final LivingEntity target;
         private final @Nullable Terminal defender;
-        private final Program program;
         private final String method;
         private final boolean escalate;
         private final Sessions.@Nullable Session session;
         private int ticksLeft;
         private Varargs result = varargsOf(Constants.NIL, valueOf("failed"));
 
-        Attempt(UUID attacker, LivingEntity target, @Nullable Terminal defender, Program program, String method, boolean escalate,
+        Attempt(Attacker attacker, LivingEntity target, @Nullable Terminal defender, String method, boolean escalate,
                 Sessions.@Nullable Session session, int ticks) {
             this.attacker = attacker;
             this.target = target;
             this.defender = defender;
-            this.program = program;
             this.method = method;
             this.escalate = escalate;
             this.session = session;
@@ -185,8 +204,8 @@ final class Access {
 
         @Override
         public boolean tick() {
-            ServerPlayer player = target.level().getServer().getPlayerList().getPlayer(attacker);
-            if (player == null || !target.isAlive() || target.isRemoved()) {
+            LivingEntity entity = attacker.entity();
+            if (!entity.isAlive() || entity.isRemoved() || !target.isAlive() || target.isRemoved()) {
                 return fail("gone");
             }
             // A rebooting target can't be hacked: rebooting is a real escape.
@@ -199,17 +218,18 @@ final class Access {
             if (--ticksLeft > 0) {
                 return false;
             }
+            String address = Addresses.of(target.getUUID());
             if (escalate) {
                 session.root = true;
-                logBoth(player, "root on ");
+                attacker.log("root on " + address);
                 result = Constants.TRUE;
             } else {
-                Sessions.Session opened = Sessions.open(player, target, method.equals(FORCE) ? null : method);
-                logBoth(player, "session on ");
+                Sessions.Session opened = Sessions.open(entity, target, method.equals(FORCE) ? null : method);
+                attacker.log("session on " + address + " opened");
                 if (defender != null) {
-                    defender.sessionOpened(player);
+                    defender.sessionOpened(entity);
                 }
-                result = Sessions.toLua(opened, program, player);
+                result = attacker.opened(opened);
             }
             return true;
         }
@@ -217,10 +237,6 @@ final class Access {
         private boolean fail(String reason) {
             result = escalate ? varargsOf(Constants.FALSE, valueOf(reason)) : varargsOf(Constants.NIL, valueOf(reason));
             return true;
-        }
-
-        private void logBoth(ServerPlayer player, String what) {
-            Terminals.existing(player).ifPresent(terminal -> terminal.log("session", what + Addresses.of(target.getUUID()) + " opened"));
         }
 
         @Override
@@ -246,7 +262,58 @@ final class Access {
         }
     }
 
-    private static FlawSeverity severityOf(LivingEntity target, String flawClass) {
+    private static Attacker programAttacker(@Nullable Terminal terminal, Program program, ServerPlayer player) {
+        return new Attacker() {
+            @Override
+            public LivingEntity entity() {
+                return player;
+            }
+
+            @Override
+            public int tops() {
+                return program.tops();
+            }
+
+            @Override
+            public Varargs opened(Sessions.Session session) {
+                return Sessions.toLua(session, program, player);
+            }
+
+            @Override
+            public void log(String message) {
+                if (terminal != null) {
+                    terminal.log("session", message);
+                }
+            }
+        };
+    }
+
+    /** Whether a method name is force or a known flaw class. */
+    public static boolean isMethod(String method) {
+        return method.equals(FORCE) || FlawRegistry.classes().stream().anyMatch(def -> def.className().equals(method));
+    }
+
+    private static @Nullable Terminal defenderOf(LivingEntity target) {
+        return target instanceof ServerPlayer player ? Terminals.existing(player).orElse(null) : null;
+    }
+
+    /**
+     * A gateway mob finishing its one-second inspection of a player: the player's programs hear
+     * about it through on_scanned, and the mob picks its method from what it saw, the worst
+     * flaw or force when there is none.
+     */
+    public static String inspectedBy(LivingEntity scanner, ServerPlayer target) {
+        Terminals.scanned(target, scanner);
+        FlawRules.Hit worst = null;
+        for (FlawRules.Hit hit : Gateways.flawsOf(target)) {
+            if (worst == null || hit.severity().rank() > worst.severity().rank()) {
+                worst = hit;
+            }
+        }
+        return worst == null ? FORCE : worst.className();
+    }
+
+    static FlawSeverity severityOf(LivingEntity target, String flawClass) {
         for (FlawRules.Hit hit : Gateways.flawsOf(target)) {
             if (hit.className().equals(flawClass)) {
                 return hit.severity();
@@ -256,7 +323,7 @@ final class Access {
     }
 
     /** Tells a player target what is coming at them, on the action bar and in the log. */
-    private static void warn(LivingEntity target, @Nullable Terminal defender, ServerPlayer attacker, String key, String method) {
+    private static void warn(LivingEntity target, @Nullable Terminal defender, LivingEntity attacker, String key, String method) {
         if (target instanceof ServerPlayer player && defender != null) {
             String address = Addresses.of(attacker.getUUID());
             player.sendOverlayMessage(Component.translatable(key, address, method).withStyle(ChatFormatting.RED));

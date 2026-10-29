@@ -29,6 +29,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.Attribute;
@@ -355,7 +356,7 @@ public final class Terminal {
      * An access attempt on this terminal: programs hear about it (on_access_attempt, which can't
      * decide), then the kernel's on_access_request decides. No hook, or a hook that fails, allows.
      */
-    Access.Decision decideAccess(ServerPlayer attacker, String method, int tops, boolean escalate) {
+    Access.Decision decideAccess(LivingEntity attacker, String method, int tops, boolean escalate) {
         ServerPlayer self = player();
         if (self == null) {
             return Access.Decision.ALLOW;
@@ -366,7 +367,7 @@ public final class Terminal {
     }
 
     /** req: who is trying, how, and with how much TOPS. */
-    private static LuaTable accessRequest(ServerPlayer attacker, ServerPlayer self, String method, int tops, boolean escalate) {
+    private static LuaTable accessRequest(LivingEntity attacker, ServerPlayer self, String method, int tops, boolean escalate) {
         LuaTable request = new LuaTable();
         request.rawset("from", EntityHandles.of(attacker, self));
         request.rawset("method", ValueFactory.valueOf(method));
@@ -410,7 +411,7 @@ public final class Terminal {
     }
 
     /** Someone got in: the kernel's on_session_opened hook, then the programs' event of the same name. */
-    void sessionOpened(ServerPlayer attacker) {
+    void sessionOpened(LivingEntity attacker) {
         ServerPlayer self = player();
         if (self == null) {
             return;

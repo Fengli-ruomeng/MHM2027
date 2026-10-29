@@ -59,6 +59,30 @@ public class Config {
             .defineInRange("endSessionBufferMb", 512.0, 0.0, 1048576.0);
 
     static {
+        BUILDER.pop().push("mobs");
+    }
+
+    public static final ModConfigSpec.BooleanValue WIRED_MOBS = BUILDER
+            .comment("Whether zombies and skeletons can spawn with a gateway (wired mobs)")
+            .define("wiredMobs", true);
+
+    public static final ModConfigSpec.IntValue WIRED_START_DAY = BUILDER
+            .comment("The first in-game day on which wired mobs appear (day 1 is the first day)")
+            .defineInRange("wiredStartDay", 2, 1, 100000);
+
+    public static final ModConfigSpec.IntValue WIRED_FULL_DAY = BUILDER
+            .comment("The day on which the chance of a wired mob reaches its maximum")
+            .defineInRange("wiredFullDay", 30, 1, 100000);
+
+    public static final ModConfigSpec.DoubleValue WIRED_MAX_CHANCE = BUILDER
+            .comment("The highest chance that a naturally spawned zombie or skeleton is wired")
+            .defineInRange("wiredMaxChance", 0.25, 0.0, 1.0);
+
+    public static final ModConfigSpec.BooleanValue RANDOM_MOB_KERNELS = BUILDER
+            .comment("Whether wired mobs roll a random native kernel, and so random flaws. Off gives them all the default kernel")
+            .define("randomMobKernels", true);
+
+    static {
         BUILDER.pop();
     }
 

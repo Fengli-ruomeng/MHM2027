@@ -47,6 +47,11 @@ public final class Terminals {
         return Terminal.data(player).level();
     }
 
+    /** Tells a player's programs that something finished inspecting them (on_scanned). */
+    public static void scanned(ServerPlayer target, Entity scanner) {
+        existing(target).ifPresent(terminal -> terminal.fire(ScriptEvents.ON_SCANNED, () -> EntityHandles.of(scanner, target)));
+    }
+
     public static Optional<Terminal> existing(ServerPlayer player) {
         return Optional.ofNullable(TERMINALS.get(player.getUUID()));
     }
