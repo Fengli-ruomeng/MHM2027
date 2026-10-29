@@ -151,7 +151,7 @@ public final class Access {
                                                 FlawSeverity matched, boolean escalate, Sessions.@Nullable Session session) {
         LivingEntity entity = attacker.entity();
         int attackerTops = attacker.tops();
-        int defenderTops = defender != null ? defender.kernel().topsReserve() : Sessions.mobDefence(target);
+        int defenderTops = defender != null ? defender.defenceTops() : Sessions.mobDefence(target);
         Decision decision = Decision.ALLOW;
         if (defender != null) {
             decision = defender.decideAccess(entity, method, attackerTops, escalate);

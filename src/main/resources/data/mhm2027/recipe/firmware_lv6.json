@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:ghast_tear",
+    "minecraft:ghast_tear",
+    "minecraft:crying_obsidian",
+    "minecraft:crying_obsidian",
+    "minecraft:crying_obsidian",
+    "minecraft:crying_obsidian"
+  ],
+  "result": {
+    "id": "mhm2027:firmware_lv6",
+    "count": 1
+  }
+}

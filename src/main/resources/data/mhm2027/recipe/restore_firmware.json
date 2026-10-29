@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:redstone",
+    "minecraft:copper_ingot"
+  ],
+  "result": {
+    "id": "mhm2027:restore_firmware",
+    "count": 1
+  }
+}

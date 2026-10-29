@@ -9,6 +9,7 @@ import java.util.UUID;
 import com.mhm.mhm2027.Mhm2027;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.item.ChipActions;
+import com.mhm.mhm2027.station.FlashStationBlock;
 import com.mhm.mhm2027.terminal.FlawRules;
 import com.mhm.mhm2027.terminal.InstallException;
 import com.mhm.mhm2027.terminal.Kernel;
@@ -85,10 +86,17 @@ public final class PanelService {
                     if (Terminals.isNull(player)) {
                         throw new InstallException("A Null gateway has no terminal to reboot");
                     }
+                    if (terminal.isFlashing()) {
+                        throw new InstallException("The gateway is flashing firmware");
+                    }
                     terminal.reboot();
                     yield Component.translatable("mhm2027.panel.rebooted");
                 }
                 case INSTALL_KERNEL -> {
+                    if (!FlashStationBlock.inReach(player)) {
+                        throw new InstallException("Kernels can only be installed at a Flash Station");
+                    }
+                    terminal.checkKernelCooldown();
                     Kernel kernel = terminal.installKernel(name);
                     yield Component.translatable("mhm2027.panel.kernel_installed", kernel.name());
                 }

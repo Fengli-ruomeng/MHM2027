@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:echo_shard",
+    "minecraft:echo_shard",
+    "minecraft:echo_shard",
+    "minecraft:echo_shard",
+    "minecraft:sculk",
+    "minecraft:sculk"
+  ],
+  "result": {
+    "id": "mhm2027:firmware_lv8",
+    "count": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:netherite_scrap",
+    "minecraft:netherite_scrap"
+  ],
+  "result": {
+    "id": "mhm2027:firmware_lv7",
+    "count": 1
+  }
+}

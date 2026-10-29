@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:flint"
+  ],
+  "result": {
+    "id": "mhm2027:null_firmware",
+    "count": 1
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": "minecraft:copper_ingot",
+    "R": "minecraft:redstone",
+    "B": "mhm2027:blank_chip",
+    "S": "minecraft:smooth_stone"
+  },
+  "pattern": [
+    "CRC",
+    "CBC",
+    "SSS"
+  ],
+  "result": {
+    "id": "mhm2027:flash_station",
+    "count": 1
+  }
+}

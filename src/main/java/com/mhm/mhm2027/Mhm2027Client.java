@@ -3,8 +3,10 @@ package com.mhm.mhm2027;
 import org.lwjgl.glfw.GLFW;
 
 import com.mhm.mhm2027.client.EdgePanelScreen;
+import com.mhm.mhm2027.client.FlashStationScreen;
 import com.mhm.mhm2027.client.GatewayHud;
 import com.mhm.mhm2027.client.PanelNetworking;
+import com.mhm.mhm2027.station.ModBlocks;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.KeyMapping;
@@ -18,6 +20,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.client.network.event.RegisterClientPayloadHandlersEvent;
@@ -47,6 +50,11 @@ public class Mhm2027Client {
     static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.registerCategory(CATEGORY);
         event.register(OPEN_PANEL);
+    }
+
+    @SubscribeEvent
+    static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
+        event.register(ModBlocks.FLASH_STATION_MENU.get(), FlashStationScreen::new);
     }
 
     @SubscribeEvent

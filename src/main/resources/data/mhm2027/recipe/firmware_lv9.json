@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:shulker_shell",
+    "minecraft:shulker_shell",
+    "minecraft:shulker_shell",
+    "minecraft:shulker_shell",
+    "minecraft:chorus_fruit",
+    "minecraft:chorus_fruit",
+    "minecraft:chorus_fruit",
+    "minecraft:chorus_fruit"
+  ],
+  "result": {
+    "id": "mhm2027:firmware_lv9",
+    "count": 1
+  }
+}

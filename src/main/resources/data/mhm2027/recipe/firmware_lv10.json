@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:nether_star",
+    "minecraft:dragon_breath"
+  ],
+  "result": {
+    "id": "mhm2027:firmware_lv10",
+    "count": 1
+  }
+}

@@ -1,12 +1,18 @@
 package com.mhm.mhm2027.item;
 
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.station.Firmware;
+import com.mhm.mhm2027.station.ModBlocks;
 
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
@@ -26,6 +32,8 @@ public final class ModItems {
             properties -> new ChipItem(properties, true), properties -> properties.stacksTo(1));
     /** Dropped by gateway mobs; every firmware needs them. */
     public static final DeferredItem<Item> DATA_SHARD = ITEMS.registerSimpleItem("data_shard");
+    public static final Map<Firmware, DeferredItem<FirmwareItem>> FIRMWARE = firmwareItems();
+    public static final DeferredItem<BlockItem> FLASH_STATION = ITEMS.registerSimpleBlockItem(ModBlocks.FLASH_STATION);
 
     /** The presets this mod ships, for the creative tab. Loot tables and other datapacks can add more. */
     private static final List<Identifier> BUILTIN_PROGRAM_PRESETS = List.of(
@@ -39,11 +47,21 @@ public final class ModItems {
             .displayItems((parameters, output) -> {
                 output.accept(BLANK_CHIP.get());
                 output.accept(DATA_SHARD.get());
+                output.accept(FLASH_STATION.get());
+                FIRMWARE.values().forEach(item -> output.accept(item.get()));
                 BUILTIN_PROGRAM_PRESETS.forEach(preset -> output.accept(ChipActions.presetChip(preset, false)));
                 BUILTIN_KERNEL_PRESETS.forEach(preset -> output.accept(ChipActions.presetChip(preset, true)));
             }).build());
 
     private ModItems() {
+    }
+
+    private static Map<Firmware, DeferredItem<FirmwareItem>> firmwareItems() {
+        Map<Firmware, DeferredItem<FirmwareItem>> items = new EnumMap<>(Firmware.class);
+        for (Firmware firmware : Firmware.values()) {
+            items.put(firmware, ITEMS.registerItem(firmware.itemName(), properties -> new FirmwareItem(properties, firmware)));
+        }
+        return Collections.unmodifiableMap(items);
     }
 
     private static Identifier id(String path) {

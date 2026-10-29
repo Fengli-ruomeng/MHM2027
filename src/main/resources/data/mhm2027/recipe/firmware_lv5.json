@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:blaze_powder",
+    "minecraft:blaze_powder",
+    "minecraft:blaze_powder",
+    "minecraft:blaze_powder",
+    "minecraft:quartz",
+    "minecraft:quartz",
+    "minecraft:quartz",
+    "minecraft:quartz"
+  ],
+  "result": {
+    "id": "mhm2027:firmware_lv5",
+    "count": 1
+  }
+}

@@ -55,6 +55,12 @@ public final class Terminal {
     /** Timed {@code me.*} writes. A kernel-swap debuff is not an enhancement, so it is not here. */
     private static final Set<String> BODY_ENHANCEMENTS = Set.of(
             "speed_boost", "jump_boost", "fall_guard", "max_health_boost", "damage_boost", "knockback_resist");
+    /** A flash ends by itself if its station stops holding it for this long (unloaded, gone). */
+    private static final int FLASH_HOLD_TICKS = 5;
+
+    /** A firmware flash in progress: the Buffer it had, and whether it started out Null. */
+    private record Flash(double savedBufferMb, boolean wasNull) {
+    }
 
     private final UUID owner;
     private final MinecraftServer server;
@@ -75,6 +81,9 @@ public final class Terminal {
     private List<FlawRules.Hit> publishedFlaws = List.of();
     /** Set when the body is replaced, so the next tick rechecks before the usual interval. */
     private boolean recheckFlaws;
+    private @Nullable Flash flash;
+    private long flashHeldAt;
+    private long kernelReadyAt;
 
     Terminal(ServerPlayer player) {
         this.owner = player.getUUID();
@@ -96,6 +105,9 @@ public final class Terminal {
         GatewayTier tier = data(player).tier();
         if (tier.isNull()) {
             throw new InstallException("A Null gateway can't run programs");
+        }
+        if (flash != null) {
+            throw new InstallException("The gateway is flashing firmware");
         }
         if (isRebooting()) {
             throw new InstallException("The terminal is rebooting (" + lockReason + ")");
@@ -176,6 +188,9 @@ public final class Terminal {
         if (tier.isNull()) {
             throw new InstallException("A Null gateway has no kernel");
         }
+        if (flash != null) {
+            throw new InstallException("The gateway is flashing firmware");
+        }
         if (isRebooting()) {
             throw new InstallException("The terminal is rebooting (" + lockReason + ")");
         }
@@ -183,6 +198,7 @@ public final class Terminal {
 
         stopAllSilently();
         kernel = next;
+        kernelReadyAt = now + Config.KERNEL_COOLDOWN_SECONDS.get() * 20L;
         data(player).setKernel(next.isBaseline() ? GatewayData.DEFAULT_KERNEL : id);
         // Programs were just cleared, so the static flaws are the ones these settings create.
         refreshFlaws(player, false);
@@ -196,8 +212,73 @@ public final class Terminal {
         return next;
     }
 
+    /** Kernels can only be swapped so often. Admin commands skip this check. */
+    public void checkKernelCooldown() throws InstallException {
+        if (now < kernelReadyAt) {
+            throw new InstallException("The kernel was changed recently; try again in " + (int) Math.ceil((kernelReadyAt - now) / 20.0) + " s");
+        }
+    }
+
+    // endregion
+
+    // region Firmware flash
+
+    /**
+     * A Flash Station starts writing firmware: every program stops, the kernel is down and
+     * Buffer is held at 0. The gateway can still be hacked; it just can't defend itself.
+     */
+    public void beginFlash(ServerPlayer player) {
+        GatewayData data = data(player);
+        flash = new Flash(data.bufferMb(), data.tier().isNull());
+        flashHeldAt = now;
+        stopAllSilently();
+        // Sessions this gateway holds on others ran on programs that are gone now.
+        Sessions.endAllBy(owner, "flashing");
+        data.setBufferMb(0);
+        updateUsage(player);
+        refreshFlaws(player, false);
+        log("kernel", "flashing firmware");
+    }
+
+    /** The station calls this every tick it keeps the flash going. */
+    public void holdFlash() {
+        flashHeldAt = now;
+    }
+
+    public boolean isFlashing() {
+        return flash != null;
+    }
+
+    /**
+     * Ends a flash, finished or not. The Buffer comes back (capped at the new maximum); leaving
+     * Null starts from the fresh LV0 Buffer instead. The kernel reloads at the gateway's level,
+     * which may have changed.
+     */
+    public void endFlash(ServerPlayer player) {
+        if (flash == null) {
+            return;
+        }
+        GatewayData data = data(player);
+        if (!flash.wasNull() && !data.tier().isNull()) {
+            data.setBufferMb(Math.min(flash.savedBufferMb(), data.tier().bufferMb()));
+        }
+        flash = null;
+        if (data.tier().isNull()) {
+            Sessions.endAllOn(owner, "null gateway");
+        }
+        kernel = loadSavedKernel(player);
+        updateUsage(player);
+        refreshFlaws(player, false);
+        log("kernel", "flash ended; gateway at LV" + data.level() + ", kernel " + kernel.name());
+    }
+
+    // endregion
+
+    // region Death and logout
+
     /** Death: the body is gone, so programs and timed effects end. The kernel carries over. */
     void onDeath() {
+        withPlayer(this::endFlash);
         Sessions.endAllOn(owner, "died");
         Sessions.endAllBy(owner, "died");
         stopAllSilently();
@@ -208,8 +289,9 @@ public final class Terminal {
         recheckFlaws = true;
     }
 
-    /** Logout: take every timed modifier back off the player. */
+    /** Logout: a flash is cancelled, and every timed modifier comes back off the player. */
     void discard(ServerPlayer player) {
+        endFlash(player);
         for (TimedModifier modifier : modifiers.values()) {
             AttributeInstance instance = player.getAttribute(modifier.attribute());
             if (instance != null) {
@@ -246,6 +328,14 @@ public final class Terminal {
         recoveringTops.removeIf(entry -> --entry[1] <= 0);
         resisting.removeIf(entry -> --entry[1] <= 0);
 
+        if (flash != null) {
+            if (now - flashHeldAt > FLASH_HOLD_TICKS) {
+                endFlash(player);
+            }
+            updateUsage(player);
+            refreshFlawsIfDue(player, bodyChanged);
+            return;
+        }
         if (isRebooting()) {
             updateUsage(player);
             refreshFlawsIfDue(player, bodyChanged);
@@ -358,7 +448,8 @@ public final class Terminal {
      */
     Access.Decision decideAccess(LivingEntity attacker, String method, int tops, boolean escalate) {
         ServerPlayer self = player();
-        if (self == null) {
+        // Mid-flash the kernel is down, so nothing decides.
+        if (self == null || flash != null) {
             return Access.Decision.ALLOW;
         }
         Supplier<Varargs> request = () -> accessRequest(attacker, self, method, tops, escalate);
@@ -374,6 +465,11 @@ public final class Terminal {
         request.rawset("tops", ValueFactory.valueOf(tops));
         request.rawset("escalate", ValueFactory.valueOf(escalate));
         return request;
+    }
+
+    /** The TOPS this terminal defends an access attempt with: the kernel reserve, or none mid-flash. */
+    int defenceTops() {
+        return flash != null ? 0 : kernel.topsReserve();
     }
 
     /** Pays Buffer for a defence (deny, closing a session). False if there isn't enough. */
@@ -419,6 +515,9 @@ public final class Terminal {
         String address = Addresses.of(attacker.getUUID());
         log("kernel", "session opened by " + address);
         self.sendOverlayMessage(Component.translatable("mhm2027.access.session_opened", address).withStyle(ChatFormatting.RED));
+        if (flash != null) {
+            return;
+        }
         kernel.callHook(this, Kernel.ON_SESSION_OPENED, EntityHandles.of(attacker, self));
         fire(ScriptEvents.ON_SESSION_OPENED, () -> EntityHandles.of(attacker, self));
     }

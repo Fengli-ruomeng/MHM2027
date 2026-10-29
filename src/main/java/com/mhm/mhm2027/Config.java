@@ -83,6 +83,14 @@ public class Config {
             .define("randomMobKernels", true);
 
     static {
+        BUILDER.pop().push("station");
+    }
+
+    public static final ModConfigSpec.IntValue KERNEL_COOLDOWN_SECONDS = BUILDER
+            .comment("Seconds a player must wait between kernel installs. Kernels are installed at a Flash Station")
+            .defineInRange("kernelCooldownSeconds", 60, 0, 86400);
+
+    static {
         BUILDER.pop();
     }
 

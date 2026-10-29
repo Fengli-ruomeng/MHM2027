@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:diamond",
+    "minecraft:diamond",
+    "minecraft:amethyst_shard",
+    "minecraft:amethyst_shard",
+    "minecraft:amethyst_shard",
+    "minecraft:amethyst_shard"
+  ],
+  "result": {
+    "id": "mhm2027:firmware_lv4",
+    "count": 1
+  }
+}

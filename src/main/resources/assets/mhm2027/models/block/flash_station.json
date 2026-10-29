@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/cube_bottom_top",
+  "textures": {
+    "side": "mhm2027:block/flash_station_side",
+    "top": "mhm2027:block/flash_station_top",
+    "bottom": "mhm2027:block/flash_station_bottom"
+  }
+}
