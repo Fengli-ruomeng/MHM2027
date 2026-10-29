@@ -15,10 +15,11 @@ import net.minecraft.resources.Identifier;
  *
  * @param line  0-based line of the error or first warning, or -1
  * @param kind  resident, transient, query or kernel; empty when there is an error
- * @param level own code: the highest API level used
+ * @param level        own code: the highest API level used
+ * @param overloadHeat a program marked overload: the Heat it adds each second; -1 otherwise
  */
 public record EditorCheck(int requestId, boolean ok, String message, int line, String kind, int tops, int ramMb, int level,
-                          List<String> details, List<String> warnings) implements CustomPacketPayload {
+                          List<String> details, List<String> warnings, int overloadHeat) implements CustomPacketPayload {
     public static final Type<EditorCheck> TYPE = new Type<>(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "editor_check"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, EditorCheck> STREAM_CODEC = StreamCodec.composite(
@@ -32,6 +33,7 @@ public record EditorCheck(int requestId, boolean ok, String message, int line, S
             ByteBufCodecs.VAR_INT, EditorCheck::level,
             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), EditorCheck::details,
             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), EditorCheck::warnings,
+            ByteBufCodecs.VAR_INT, EditorCheck::overloadHeat,
             EditorCheck::new);
 
     @Override

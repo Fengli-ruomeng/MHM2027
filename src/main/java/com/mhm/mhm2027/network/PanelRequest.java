@@ -23,7 +23,11 @@ public record PanelRequest(Action action, String argument) implements CustomPack
         REBOOT,
         INSTALL_KERNEL,
         /** Copy a stored file onto a blank chip from the inventory. */
-        BURN
+        BURN,
+        /** Put a storage entry in a socket; only at a Flash Station. */
+        SOCKET,
+        /** Take a storage entry out of its socket; only at a Flash Station. */
+        UNSOCKET
     }
 
     public static final Type<PanelRequest> TYPE = new Type<>(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "panel_request"));

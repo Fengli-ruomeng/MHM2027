@@ -9,6 +9,7 @@ import com.mhm.mhm2027.terminal.PresetRegistry;
 import com.mhm.mhm2027.terminal.ScriptAnalyzer;
 import com.mhm.mhm2027.terminal.ScriptStore;
 import com.mhm.mhm2027.terminal.ScriptSummary;
+import com.mhm.mhm2027.terminal.Terminal;
 import com.mhm.mhm2027.terminal.Terminals;
 
 import net.minecraft.ChatFormatting;
@@ -55,8 +56,9 @@ public final class ChipActions {
         PresetRegistry.Preset preset = PresetRegistry.get(id)
                 .orElseThrow(() -> new InstallException("This chip's preset (" + id + ") no longer exists"));
         int level = Terminals.level(player);
-        if (level < preset.level()) {
-            throw new InstallException(preset.summary().name() + " requires gateway LV" + preset.level() + " (you are LV" + level + ")");
+        int required = Terminal.requiredLevel(preset);
+        if (level < required) {
+            throw new InstallException(preset.summary().name() + " requires gateway LV" + required + " (you are LV" + level + ")");
         }
         InstalledPresets installed = player.getData(ModAttachments.PRESETS);
         if (installed.contains(id)) {
@@ -100,8 +102,18 @@ public final class ChipActions {
     public static ItemStack presetChip(Identifier id, boolean kernel) {
         ItemStack chip = new ItemStack(kernel ? ModItems.KERNEL_CHIP.get() : ModItems.PROGRAM_CHIP.get());
         chip.set(ModComponents.PRESET.get(), id);
-        PresetRegistry.get(id).ifPresent(preset -> chip.set(ModComponents.SUMMARY.get(), preset.summary()));
+        PresetRegistry.get(id).ifPresent(preset -> chip.set(ModComponents.SUMMARY.get(), chipSummary(preset)));
         return chip;
+    }
+
+    /** What a preset chip shows: the level needed to use it, and Overload presets marked as such. */
+    private static ScriptSummary chipSummary(PresetRegistry.Preset preset) {
+        ScriptSummary summary = preset.summary();
+        if (!preset.overload()) {
+            return summary;
+        }
+        return new ScriptSummary(summary.name(), "overload " + summary.kind(), summary.tops(), summary.ramMb(),
+                Terminal.requiredLevel(preset), summary.details());
     }
 
     private static ItemStack findBlank(Inventory inventory) {

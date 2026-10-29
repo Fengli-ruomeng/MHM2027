@@ -22,9 +22,11 @@ public final class ScriptDiagnostics {
 
     /**
      * @param line    0-based line of the error, or of the first warning; -1 if none applies
-     * @param summary what the script is and costs; null when there is an error
+     * @param summary      what the script is and costs; null when there is an error
+     * @param overloadHeat for a program marked overload, the Heat it adds each second on this gateway; -1 otherwise
      */
-    public record Result(boolean ok, String message, int line, @Nullable ScriptSummary summary, List<String> warnings) {
+    public record Result(boolean ok, String message, int line, @Nullable ScriptSummary summary, List<String> warnings,
+                         int overloadHeat) {
     }
 
     private ScriptDiagnostics() {
@@ -39,11 +41,18 @@ public final class ScriptDiagnostics {
      *              the file they are checking. An empty list previews nothing.
      */
     public static Result check(String file, String source, int gatewayLevel, List<FlawRules.ClassDef> flaws) {
+        return check(file, source, gatewayLevel, flaws, SocketRules.DEFAULT_SCRIPT_REACH);
+    }
+
+    /**
+     * @param overloadReach how far above the gateway a program marked overload may reach
+     */
+    public static Result check(String file, String source, int gatewayLevel, List<FlawRules.ClassDef> flaws, int overloadReach) {
         ScriptAnalyzer.Analysis analysis;
         try {
             analysis = ScriptAnalyzer.analyze(file, source, false);
         } catch (InstallException e) {
-            return new Result(false, e.getMessage(), locate(source, e.getMessage()), null, List.of());
+            return new Result(false, e.getMessage(), locate(source, e.getMessage()), null, List.of(), -1);
         }
         ScriptSummary summary = analysis.summary();
 
@@ -73,12 +82,22 @@ public final class ScriptDiagnostics {
                 }
             }
         } else {
-            if (summary.level() > gatewayLevel) {
+            // Overload code may reach a little above the gateway, and pays for it in Heat.
+            int reach = analysis.overload() ? gatewayLevel + overloadReach : gatewayLevel;
+            if (summary.level() > reach) {
                 String api = summary.details().stream()
-                        .filter(id -> ApiSpec.byId(id).map(spec -> spec.minLevel() > gatewayLevel).orElse(false))
+                        .filter(id -> ApiSpec.byId(id).map(spec -> spec.minLevel() > reach).orElse(false))
                         .findFirst().orElse("");
-                warnings.add(api + " needs gateway LV" + summary.level() + "; yours is LV" + gatewayLevel + ", so it won't run yet");
+                warnings.add(api + " needs gateway LV" + summary.level() + "; " + (analysis.overload()
+                        ? "Overload code on your LV" + gatewayLevel + " gateway reaches LV" + reach
+                        : "yours is LV" + gatewayLevel) + ", so it won't run yet");
                 line = locate(source, api);
+            }
+            if (analysis.overload() && tier.overloadSlots() == 0) {
+                warnings.add("Overload programs run from Overload sockets, which start at LV4");
+                if (line < 0) {
+                    line = headerLine(source);
+                }
             }
             if (summary.tops() > tier.tops()) {
                 warnings.add("Reserves " + summary.tops() + " TOPS; your gateway has " + tier.tops());
@@ -87,7 +106,8 @@ public final class ScriptDiagnostics {
                 }
             }
         }
-        return new Result(true, "", line, summary, warnings);
+        int overloadHeat = analysis.overload() ? SocketRules.heatPerSecond(summary.level(), gatewayLevel) : -1;
+        return new Result(true, "", line, summary, warnings, overloadHeat);
     }
 
     /** The 0-based line a message refers to, or -1. */

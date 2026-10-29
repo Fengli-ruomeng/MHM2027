@@ -61,11 +61,12 @@ final class ScriptCompiler {
 
     // region Headers
 
-    private static final Set<String> PROGRAM_KEYS = Set.of("name", "type", "tops");
+    /** {@code overload = true} marks a program that runs in an Overload socket, reaching above the gateway's level. */
+    private static final Set<String> PROGRAM_KEYS = Set.of("name", "type", "tops", "overload");
     /** Extra header fields only presets may set: the gateway level they require, and a blurb. */
     private static final Set<String> PRESET_KEYS = Set.of("level", "description");
 
-    record ProgramHeader(String name, ProgramType type, int tops) {
+    record ProgramHeader(String name, ProgramType type, int tops, boolean overload) {
     }
 
     static ProgramHeader programHeader(LuaTable header, String file, boolean preset, int maxTops) throws InstallException {
@@ -74,7 +75,7 @@ final class ScriptCompiler {
         String typeId = stringField(header, "type", ProgramType.RESIDENT.id());
         ProgramType type = ProgramType.byId(typeId).orElseThrow(() -> new InstallException("type must be resident, transient or query"));
         int tops = intField(header, "tops", 1, 1, Math.max(1, maxTops));
-        return new ProgramHeader(name, type, tops);
+        return new ProgramHeader(name, type, tops, boolField(header, "overload"));
     }
 
     static void checkKernelKeys(LuaTable header, boolean preset) throws InstallException {
@@ -184,6 +185,17 @@ final class ScriptCompiler {
             throw new InstallException("Header field " + key + " must be a string");
         }
         return value.toString();
+    }
+
+    static boolean boolField(LuaTable header, String key) throws InstallException {
+        LuaValue value = header.rawget(key);
+        if (value.isNil()) {
+            return false;
+        }
+        if (value.type() != Constants.TBOOLEAN) {
+            throw new InstallException("Header field " + key + " must be true or false");
+        }
+        return value.toBoolean();
     }
 
     static int intField(LuaTable header, String key, int fallback, int min, int max) throws InstallException {

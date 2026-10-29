@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.item.ModComponents;
 import com.mhm.mhm2027.item.ModItems;
+import com.mhm.mhm2027.potion.ModPotions;
 import com.mhm.mhm2027.station.ModBlocks;
 import com.mojang.logging.LogUtils;
 
@@ -26,6 +27,8 @@ public class Mhm2027 {
         ModBlocks.BLOCK_ENTITIES.register(modEventBus);
         ModBlocks.MENUS.register(modEventBus);
         ModItems.ITEMS.register(modEventBus);
+        ModPotions.EFFECTS.register(modEventBus);
+        ModPotions.POTIONS.register(modEventBus);
         ModItems.CREATIVE_TABS.register(modEventBus);
 
         // Server config: balance values are per world and synced to clients.

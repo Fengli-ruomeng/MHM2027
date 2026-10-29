@@ -18,10 +18,12 @@ import com.mhm.mhm2027.gateway.GatewayTier;
  */
 public final class ScriptAnalyzer {
     /**
-     * @param presetLevel    for a preset, the gateway level it requires; 0 otherwise
+     * @param presetLevel    for a preset, the gateway level it requires (an Overload preset: the level its code runs at); 0 otherwise
      * @param kernelSettings the kernel header, or null for a program
+     * @param overload       a program marked {@code overload = true}, for an Overload socket
      */
-    public record Analysis(ScriptSummary summary, int presetLevel, String description, @Nullable KernelSettings kernelSettings) {
+    public record Analysis(ScriptSummary summary, int presetLevel, String description, @Nullable KernelSettings kernelSettings,
+                           boolean overload) {
     }
 
     private ScriptAnalyzer() {
@@ -32,7 +34,7 @@ public final class ScriptAnalyzer {
      *
      * Own code may use any API (the level shown is the highest one it needs). A preset that
      * requires LV N runs as if the gateway were LV N+1, so its code may use APIs and hook points
-     * up to that level and no further.
+     * up to that level and no further. An Overload preset's level is the level its code runs at.
      */
     public static Analysis analyze(String chunk, String source, boolean preset) throws InstallException {
         LuaSandbox sandbox;
@@ -52,14 +54,14 @@ public final class ScriptAnalyzer {
         LuaTable header = ScriptCompiler.load(sandbox, chunk, source, "program", "kernel");
         ScriptCompiler.ProgramHeader parsed = ScriptCompiler.programHeader(header, chunk, preset, GatewayTier.LV11.tops());
         int presetLevel = preset ? ScriptCompiler.presetLevel(header) : 0;
-        int allowed = preset ? presetLevel + 1 : GatewayTier.MAX_LEVEL;
+        int allowed = !preset ? GatewayTier.MAX_LEVEL : parsed.overload() ? presetLevel : presetLevel + 1;
         Set<ApiSpec> apis = ScriptCompiler.scanApis(source, false, parsed.type(), allowed);
         ScriptCompiler.handlers(sandbox, ScriptEvents.PROGRAM_EVENTS);
 
         int level = preset ? presetLevel : apis.stream().mapToInt(ApiSpec::minLevel).max().orElse(0);
         ScriptSummary summary = new ScriptSummary(parsed.name(), parsed.type().id(), parsed.tops(),
                 ScriptCompiler.programRam(parsed.type(), apis), level, apis.stream().map(ApiSpec::id).toList());
-        return new Analysis(summary, presetLevel, preset ? ScriptCompiler.presetDescription(header) : "", null);
+        return new Analysis(summary, presetLevel, preset ? ScriptCompiler.presetDescription(header) : "", null, parsed.overload());
     }
 
     private static Analysis analyzeKernel(LuaSandbox sandbox, String chunk, String source, boolean preset) throws InstallException {
@@ -78,7 +80,7 @@ public final class ScriptAnalyzer {
         int level = preset ? presetLevel : levelForHooks(hooks.size());
         ScriptSummary summary = new ScriptSummary(name, ScriptSummary.KERNEL, settings.topsReserve(),
                 KernelSettings.ramFor(hooks.size()), level, List.copyOf(hooks.keySet()));
-        return new Analysis(summary, presetLevel, preset ? ScriptCompiler.presetDescription(header) : "", settings);
+        return new Analysis(summary, presetLevel, preset ? ScriptCompiler.presetDescription(header) : "", settings, false);
     }
 
     /** The lowest gateway level with enough hook points for this many hooks. */

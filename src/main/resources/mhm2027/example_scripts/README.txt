@@ -7,7 +7,7 @@ the terminal reads the file fresh each time you start it.
 Press G (or the key set under Controls) to open the control panel:
   Status      RAM, TOPS, Buffer, Heat and flaws
   Processes   what's running and what it costs; run, stop and reboot
-  Kernel      the installed kernel; swap kernels (Baseline is built in)
+  Kernel      the installed kernel; swap kernels at a Flash Station (Baseline is built in)
   Log         errors, print and sys.log output
 
 Server operators also have /edge commands for testing and administration.
@@ -16,7 +16,7 @@ Examples
   Monitor.lua       LV0  resident: warns when your health is low
   Status.lua        LV0  query: prints RAM, TOPS and programs to the log
   Spinner.lua       LV0  resident: an endless loop that only slows itself
-  Adrenaline.lua    LV1  resident: speed burst after a big hit
+  Adrenaline.lua    LV1  resident: speed burst after a big hit (runs from a socket)
   Scanner.lua       LV0  resident: scans the nearest gateway and logs its level and flaws
   Counterpunch.lua  LV0  resident: after a big hit, gets into the attacker and freezes them
   Bulwark.lua       kernel with on_panic and on_low_ram hooks
@@ -26,6 +26,15 @@ Programs start with a header:
   program { name = "Name", type = "resident" | "transient" | "query", tops = 4 }
 Kernels start with:
   kernel { name = "Name", schedule = "fair", gc = "normal", verify = "full", rate_limit = 4 }
+
+Sockets
+  Programs that change your body (any me.*_boost, fall_guard, regen_burst...) run only from
+  a socket. Put them in one from the Processes tab while standing at a Flash Station.
+  Programs that only read or decide need no socket. Your level sets how many sockets you have.
+  Overload sockets (LV4 and up) take programs whose header says overload = true. Their code
+  may reach above your level (presets by 6 levels, your own scripts by 2), and every second
+  they run they add 2 Heat plus the level gap, and some Leak. At 100 Heat they crash and the
+  Overload sockets lock for 60 s.
 
 Program events: on_start, on_stop, on_run, on_timer, on_hit_taken(attacker, amount),
                 on_hit_dealt(target, amount), on_kill(target),

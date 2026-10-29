@@ -1,5 +1,9 @@
 package com.mhm.mhm2027;
 
+import java.util.List;
+
+import com.mhm.mhm2027.terminal.SocketRules;
+
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 // Balance values for the gateway layer. Defaults are the starting numbers from Design Draft v2.
@@ -89,6 +93,35 @@ public class Config {
     public static final ModConfigSpec.IntValue KERNEL_COOLDOWN_SECONDS = BUILDER
             .comment("Seconds a player must wait between kernel installs. Kernels are installed at a Flash Station")
             .defineInRange("kernelCooldownSeconds", 60, 0, 86400);
+
+    static {
+        BUILDER.pop().push("overload");
+    }
+
+    public static final ModConfigSpec.IntValue OVERLOAD_PRESET_REACH = BUILDER
+            .comment("How many levels above the gateway an Overload preset's code may reach")
+            .defineInRange("presetReach", 6, 0, 11);
+
+    public static final ModConfigSpec.IntValue OVERLOAD_SCRIPT_REACH = BUILDER
+            .comment("How many levels above the gateway a player's own Overload script may reach")
+            .defineInRange("scriptReach", SocketRules.DEFAULT_SCRIPT_REACH, 0, 11);
+
+    public static final ModConfigSpec.DoubleValue OVERLOAD_LEAK_SHARE = BUILDER
+            .comment("Share of an Overload program's RAM added to Leak each second it runs")
+            .defineInRange("leakShare", 0.1, 0.0, 10.0);
+
+    public static final ModConfigSpec.IntValue OVERLOAD_LOCK_SECONDS = BUILDER
+            .comment("Seconds the Overload sockets stay locked after overheating")
+            .defineInRange("lockSeconds", 60, 0, 3600);
+
+    static {
+        BUILDER.pop().push("potions");
+    }
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Double>> BUFFER_RESTORE_SHARES = BUILDER
+            .comment("Share of max Buffer a Cyber Potion restores at each level, I to V")
+            .defineList("bufferRestoreShares", List.of(0.1, 0.2, 0.35, 0.5, 0.75), () -> 0.1,
+                    value -> value instanceof Double share && share >= 0 && share <= 1);
 
     static {
         BUILDER.pop();

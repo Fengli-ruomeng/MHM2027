@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.mhm.mhm2027.Mhm2027;
 import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.gateway.Sockets;
 import com.mhm.mhm2027.item.ChipActions;
 import com.mhm.mhm2027.station.FlashStationBlock;
 import com.mhm.mhm2027.terminal.FlawRules;
@@ -101,6 +102,15 @@ public final class PanelService {
                     yield Component.translatable("mhm2027.panel.kernel_installed", kernel.name());
                 }
                 case BURN -> Component.translatable("mhm2027.panel.burned", ChipActions.burn(player, name));
+                case SOCKET -> {
+                    requireStation(player);
+                    yield Component.translatable("mhm2027.panel.socketed", terminal.socket(name));
+                }
+                case UNSOCKET -> {
+                    requireStation(player);
+                    terminal.unsocket(name);
+                    yield Component.translatable("mhm2027.panel.unsocketed", displayName(name));
+                }
                 default -> throw new IllegalStateException();
             };
             PacketDistributor.sendToPlayer(player, new PanelMessage(true, result));
@@ -133,6 +143,17 @@ public final class PanelService {
     @SubscribeEvent
     static void onServerStopped(ServerStoppedEvent event) {
         WATCHERS.clear();
+    }
+
+    private static void requireStation(ServerPlayer player) throws InstallException {
+        if (!FlashStationBlock.inReach(player)) {
+            throw new InstallException("Sockets can only be changed at a Flash Station");
+        }
+    }
+
+    /** A storage entry as the player knows it: a preset's name, or the file name. */
+    private static String displayName(String id) {
+        return PresetRegistry.byTerminalId(id).map(preset -> preset.summary().name()).orElse(id);
     }
 
     static void sendSnapshot(ServerPlayer player) {
@@ -176,7 +197,17 @@ public final class PanelService {
             flaws.add(new PanelSnapshot.FlawRow(approach.className(), approach.severity().id(), approach.cause(), true));
         }
 
+        List<PanelSnapshot.SocketRow> sockets = new ArrayList<>();
+        Sockets loadout = terminal.sockets(player);
+        loadout.standard().forEach(id -> sockets.add(socketRow(false, id)));
+        loadout.overload().forEach(id -> sockets.add(socketRow(true, id)));
+
         return new PanelSnapshot(kernelInfo, programs, scripts, terminal.log(),
-                terminal.isRebooting() ? terminal.lockReason() : "", terminal.isRebooting() ? terminal.lockSecondsLeft() : 0, flaws);
+                terminal.isRebooting() ? terminal.lockReason() : "", terminal.isRebooting() ? terminal.lockSecondsLeft() : 0, flaws,
+                sockets, FlashStationBlock.inReach(player), terminal.overloadLockSecondsLeft());
+    }
+
+    private static PanelSnapshot.SocketRow socketRow(boolean overload, String id) {
+        return new PanelSnapshot.SocketRow(overload, id, id.isEmpty() ? "" : displayName(id), id.startsWith(PresetRegistry.PREFIX));
     }
 }

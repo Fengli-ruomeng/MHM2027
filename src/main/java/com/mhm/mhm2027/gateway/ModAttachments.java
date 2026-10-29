@@ -46,4 +46,11 @@ public class ModAttachments {
             .serialize(InstalledPresets.CODEC.fieldOf("presets"))
             .copyOnDeath()
             .build());
+
+    /** What sits in the gateway's sockets. Server only, like the presets. */
+    public static final Supplier<AttachmentType<Sockets>> SOCKETS = ATTACHMENT_TYPES.register("sockets", () -> AttachmentType
+            .builder(() -> Sockets.EMPTY)
+            .serialize(Sockets.CODEC.fieldOf("sockets"))
+            .copyOnDeath()
+            .build());
 }

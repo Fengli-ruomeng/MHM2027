@@ -245,6 +245,8 @@ public class EdgePanelScreen extends Screen {
             });
         }
 
+        addSocketRows(rows, snapshot, x, right);
+
         rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.panel.storage"), x, y + 4, COLOR_ACCENT));
         List<PanelSnapshot.ScriptRow> runnable = snapshot.scripts().stream()
                 .filter(script -> !script.kernel())
@@ -258,6 +260,13 @@ public class EdgePanelScreen extends Screen {
                 storageLabel(g, script, x + 4, y + 2);
                 button(g, right - 36, y, 36, Component.translatable("mhm2027.panel.run"), !rebooting, hover,
                         () -> send(PanelRequest.Action.START, script.id()));
+                if (snapshot.socketed(script.id())) {
+                    Component tag = Component.translatable("mhm2027.panel.socketed_tag");
+                    text(g, tag, right - 116 - font.width(tag), y + 2, COLOR_OK);
+                } else {
+                    button(g, right - 160, y, 44, Component.translatable("mhm2027.panel.socket"), snapshot.atStation(), hover,
+                            () -> send(PanelRequest.Action.SOCKET, script.id()));
+                }
                 if (!script.preset()) {
                     button(g, right - 76, y, 38, Component.translatable("mhm2027.panel.burn"), true, hover,
                             () -> send(PanelRequest.Action.BURN, script.id()));
@@ -283,6 +292,39 @@ public class EdgePanelScreen extends Screen {
         if (rebooting) {
             Component status = Component.translatable("mhm2027.terminal.rebooting", snapshot.lockReason(), snapshot.lockSecondsLeft());
             text(graphics, status, right - font.width(status), buttonsY + 2, COLOR_WARN);
+        }
+    }
+
+    /**
+     * The sockets: standard ones (S1, S2...) then Overload ones (O1...). They can only be
+     * changed at a Flash Station, so the buttons are greyed out anywhere else.
+     */
+    private void addSocketRows(List<Row> rows, PanelSnapshot snapshot, int x, int right) {
+        rows.add((g, y, hover) -> {
+            text(g, Component.translatable("mhm2027.panel.sockets"), x, y + 4, COLOR_ACCENT);
+            if (!snapshot.atStation()) {
+                Component hint = Component.translatable("mhm2027.panel.sockets_hint");
+                text(g, hint, right - font.width(hint), y + 4, COLOR_DIM);
+            }
+        });
+        if (snapshot.overloadLockSeconds() > 0) {
+            rows.add((g, y, hover) -> text(g, Component.translatable("mhm2027.panel.overload_locked", snapshot.overloadLockSeconds()),
+                    x + 4, y + 2, COLOR_ALERT));
+        }
+        int standard = 0;
+        int overload = 0;
+        for (PanelSnapshot.SocketRow socket : snapshot.sockets()) {
+            String label = socket.overload() ? "O" + ++overload : "S" + ++standard;
+            rows.add((g, y, hover) -> {
+                text(g, Component.literal(label), x + 4, y + 2, socket.overload() ? COLOR_HEAT : COLOR_DIM);
+                if (socket.empty()) {
+                    text(g, Component.translatable("mhm2027.panel.socket_empty"), x + 24, y + 2, COLOR_DIM);
+                    return;
+                }
+                text(g, clip(Component.literal(socket.name()), right - x - 100), x + 24, y + 2, socket.preset() ? COLOR_PRESET : COLOR_TEXT);
+                button(g, right - 44, y, 44, Component.translatable("mhm2027.panel.remove"), snapshot.atStation(), hover,
+                        () -> send(PanelRequest.Action.UNSOCKET, socket.id()));
+            });
         }
     }
 

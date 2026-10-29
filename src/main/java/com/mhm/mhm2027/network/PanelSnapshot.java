@@ -22,7 +22,10 @@ public record PanelSnapshot(
         List<String> log,
         String lockReason,
         int lockSecondsLeft,
-        List<FlawRow> flaws) implements CustomPacketPayload {
+        List<FlawRow> flaws,
+        List<SocketRow> sockets,
+        boolean atStation,
+        int overloadLockSeconds) implements CustomPacketPayload {
 
     /**
      * @param id what it was installed from: "Baseline", a file name, or {@code preset:<id>}
@@ -90,6 +93,24 @@ public record PanelSnapshot(
                 ScriptRow::new);
     }
 
+    /**
+     * One socket, standard ones first.
+     *
+     * @param id what sits in it (a file name or {@code preset:<id>}), or empty
+     */
+    public record SocketRow(boolean overload, String id, String name, boolean preset) {
+        static final StreamCodec<RegistryFriendlyByteBuf, SocketRow> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.BOOL, SocketRow::overload,
+                ByteBufCodecs.STRING_UTF8, SocketRow::id,
+                ByteBufCodecs.STRING_UTF8, SocketRow::name,
+                ByteBufCodecs.BOOL, SocketRow::preset,
+                SocketRow::new);
+
+        public boolean empty() {
+            return id.isEmpty();
+        }
+    }
+
     public static final Type<PanelSnapshot> TYPE = new Type<>(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "panel_snapshot"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, PanelSnapshot> STREAM_CODEC = StreamCodec.composite(
@@ -100,9 +121,17 @@ public record PanelSnapshot(
             ByteBufCodecs.STRING_UTF8, PanelSnapshot::lockReason,
             ByteBufCodecs.VAR_INT, PanelSnapshot::lockSecondsLeft,
             FlawRow.STREAM_CODEC.apply(ByteBufCodecs.list()), PanelSnapshot::flaws,
+            SocketRow.STREAM_CODEC.apply(ByteBufCodecs.list()), PanelSnapshot::sockets,
+            ByteBufCodecs.BOOL, PanelSnapshot::atStation,
+            ByteBufCodecs.VAR_INT, PanelSnapshot::overloadLockSeconds,
             PanelSnapshot::new);
 
-    public static final PanelSnapshot EMPTY = new PanelSnapshot(KernelInfo.EMPTY, List.of(), List.of(), List.of(), "", 0, List.of());
+    public static final PanelSnapshot EMPTY = new PanelSnapshot(KernelInfo.EMPTY, List.of(), List.of(), List.of(), "", 0, List.of(),
+            List.of(), false, 0);
+
+    public boolean socketed(String id) {
+        return sockets.stream().anyMatch(socket -> socket.id().equals(id));
+    }
 
     public boolean rebooting() {
         return lockSecondsLeft > 0;

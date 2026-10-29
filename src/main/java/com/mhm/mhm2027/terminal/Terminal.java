@@ -22,6 +22,7 @@ import com.mhm.mhm2027.Mhm2027;
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.gateway.Sockets;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.Holder;
@@ -84,6 +85,7 @@ public final class Terminal {
     private @Nullable Flash flash;
     private long flashHeldAt;
     private long kernelReadyAt;
+    private long overloadLockedUntil;
 
     Terminal(ServerPlayer player) {
         this.owner = player.getUUID();
@@ -113,15 +115,8 @@ public final class Terminal {
             throw new InstallException("The terminal is rebooting (" + lockReason + ")");
         }
 
-        Program program;
-        if (id.startsWith(PresetRegistry.PREFIX)) {
-            PresetRegistry.Preset preset = installedPreset(player, id, false);
-            // Locked code runs at the preset's privilege, so install checks use that level too.
-            program = new Program(this, id, preset.chunk(), preset.source(), Math.max(tier.level(), preset.privilegeLevel()),
-                    tier.tops(), preset.privilegeLevel());
-        } else {
-            program = new Program(this, id, id, ScriptStore.read(server, owner, id), tier.level(), tier.tops(), -1);
-        }
+        Program program = load(player, id);
+        checkSocket(player, program);
         if (find(program.name()).isPresent()) {
             throw new InstallException(program.name() + " is already running");
         }
@@ -135,10 +130,6 @@ public final class Terminal {
             throw new InstallException("Not enough RAM: " + program.name() + " needs " + GatewayData.formatMb(program.ramMb())
                     + ", " + GatewayData.formatMb(Math.max(0, freeRam)) + " free");
         }
-        if (program.needsSlot() && slotsInUse() >= tier.standardSlots()) {
-            throw new InstallException(program.name() + " changes your body and needs a standard slot; all "
-                    + tier.standardSlots() + " are in use");
-        }
 
         programs.add(program);
         program.begin();
@@ -147,6 +138,41 @@ public final class Terminal {
         log(program.name(), "started (" + program.type().id() + ", " + GatewayData.formatMb(program.ramMb()) + ", "
                 + program.tops() + " TOPS)");
         return program;
+    }
+
+    /** Loads and checks a program from storage without starting it. */
+    private Program load(ServerPlayer player, String id) throws InstallException {
+        GatewayTier tier = data(player).tier();
+        if (id.startsWith(PresetRegistry.PREFIX)) {
+            PresetRegistry.Preset preset = installedPreset(player, id, false);
+            // Locked code runs at the preset's privilege, so install checks use that level too.
+            return new Program(this, id, preset.chunk(), preset.source(), Math.max(tier.level(), preset.privilegeLevel()),
+                    tier.tops(), preset.privilegeLevel(), 0);
+        }
+        return new Program(this, id, id, ScriptStore.read(server, owner, id), tier.level(), tier.tops(), -1,
+                Config.OVERLOAD_SCRIPT_REACH.get());
+    }
+
+    /**
+     * Body-changing programs run only from a standard socket, Overload programs only from an
+     * Overload socket. Everything else needs no socket.
+     */
+    private void checkSocket(ServerPlayer player, Program program) throws InstallException {
+        Sockets sockets = sockets(player);
+        if (program.isOverload()) {
+            if (sockets.overload().isEmpty()) {
+                throw new InstallException(program.name() + " is an Overload program; Overload sockets start at LV4");
+            }
+            if (now < overloadLockedUntil) {
+                throw new InstallException("The Overload sockets are locked after overheating ("
+                        + overloadLockSecondsLeft() + " s)");
+            }
+            if (!sockets.holds(program.id(), true)) {
+                throw new InstallException(program.name() + " is an Overload program; put it in an Overload socket at a Flash Station");
+            }
+        } else if (program.needsSlot() && !sockets.holds(program.id(), false)) {
+            throw new InstallException(program.name() + " changes your body; put it in a socket at a Flash Station");
+        }
     }
 
     /** Stops a program by name, running its on_stop. Its TOPS come back over 3 seconds. */
@@ -221,6 +247,73 @@ public final class Terminal {
 
     // endregion
 
+    // region Sockets
+
+    /** The gateway's sockets, sized to its level. */
+    public Sockets sockets(ServerPlayer player) {
+        return player.getData(ModAttachments.SOCKETS).fitted(data(player).tier());
+    }
+
+    /**
+     * Puts something from storage in the first free socket of the kind it needs. The caller
+     * checks that the player is at a Flash Station.
+     *
+     * @return the program's name
+     */
+    public String socket(String id) throws InstallException {
+        ServerPlayer player = requirePlayer();
+        if (data(player).tier().isNull()) {
+            throw new InstallException("A Null gateway has no sockets");
+        }
+        if (flash != null) {
+            throw new InstallException("The gateway is flashing firmware");
+        }
+        Sockets sockets = sockets(player);
+        if (sockets.holds(id)) {
+            throw new InstallException(id + " is already in a socket");
+        }
+        // Loading it the way a start would also tells which kind of socket it needs.
+        Program program = load(player, id);
+        boolean overload = program.isOverload();
+        if (!overload && !program.needsSlot()) {
+            throw new InstallException(program.name() + " doesn't change your body, so it runs without a socket");
+        }
+        List<String> kind = overload ? sockets.overload() : sockets.standard();
+        if (kind.isEmpty()) {
+            throw new InstallException("Your gateway has no Overload sockets yet; they start at LV4");
+        }
+        int free = SocketRules.firstFree(kind);
+        if (free < 0) {
+            throw new InstallException("All " + kind.size() + (overload ? " Overload" : " standard") + " sockets are in use; remove something first");
+        }
+        player.setData(ModAttachments.SOCKETS, sockets.with(overload, free, id));
+        log("kernel", "socketed " + program.name() + (overload ? " (Overload)" : ""));
+        return program.name();
+    }
+
+    /** Takes something out of its socket, stopping it if it runs. The caller checks for a Flash Station. */
+    public void unsocket(String id) throws InstallException {
+        ServerPlayer player = requirePlayer();
+        Sockets sockets = sockets(player);
+        if (!sockets.holds(id)) {
+            throw new InstallException(id + " isn't in a socket");
+        }
+        programs.stream().filter(program -> program.id().equals(id)).findFirst().ifPresent(program -> stop(program.name()));
+        player.setData(ModAttachments.SOCKETS, sockets.without(id));
+        log("kernel", "unsocketed " + id);
+    }
+
+    public int overloadLockSecondsLeft() {
+        return (int) Math.max(0, Math.ceil((overloadLockedUntil - now) / 20.0));
+    }
+
+    /** The level a gateway needs to write and run a preset. */
+    public static int requiredLevel(PresetRegistry.Preset preset) {
+        return preset.overload() ? SocketRules.presetRequirement(preset.level(), Config.OVERLOAD_PRESET_REACH.get()) : preset.level();
+    }
+
+    // endregion
+
     // region Firmware flash
 
     /**
@@ -238,6 +331,20 @@ public final class Terminal {
         updateUsage(player);
         refreshFlaws(player, false);
         log("kernel", "flashing firmware");
+    }
+
+    /**
+     * A Cyber Potion: Buffer back, up to the maximum. Mid-flash it goes to the Buffer that
+     * comes back when the flash ends, so it isn't lost.
+     */
+    public void restoreBuffer(ServerPlayer player, double mb) {
+        GatewayData data = data(player);
+        double max = data.tier().bufferMb();
+        if (flash != null) {
+            flash = new Flash(Math.min(max, flash.savedBufferMb() + mb), flash.wasNull());
+            return;
+        }
+        data.setBufferMb(Math.min(max, data.bufferMb() + mb));
     }
 
     /** The station calls this every tick it keeps the flash going. */
@@ -368,8 +475,44 @@ public final class Terminal {
                 stop(program.name());
             }
         }
+        if (now % 20 == 0) {
+            tickOverload(player);
+        }
         updateUsage(player);
         refreshFlawsIfDue(player, bodyChanged);
+    }
+
+    /**
+     * Each running Overload program heats the gateway by 2 plus its level gap a second, and
+     * leaks. At full Heat they all crash, each leaving its RAM as Leak, and the Overload
+     * sockets lock.
+     */
+    private void tickOverload(ServerPlayer player) {
+        List<Program> overloads = programs.stream().filter(Program::isOverload).toList();
+        if (overloads.isEmpty()) {
+            return;
+        }
+        GatewayData data = data(player);
+        double heat = 0;
+        double leak = 0;
+        for (Program program : overloads) {
+            heat += SocketRules.heatPerSecond(program.codeLevel(), data.level());
+            leak += program.ramMb() * Config.OVERLOAD_LEAK_SHARE.get();
+        }
+        data.setHeat(data.heat() + heat);
+        data.setLeakMb(data.leakMb() + leak);
+        if (data.heat() < GatewayData.MAX_HEAT) {
+            return;
+        }
+        for (Program program : overloads) {
+            programs.remove(program);
+            data.setLeakMb(data.leakMb() + program.ramMb());
+            log(program.name(), "crashed: overheated");
+        }
+        int lockSeconds = Config.OVERLOAD_LOCK_SECONDS.get();
+        overloadLockedUntil = now + lockSeconds * 20L;
+        recheckFlaws = true;
+        player.sendOverlayMessage(Component.translatable("mhm2027.terminal.overheated", lockSeconds).withStyle(ChatFormatting.RED));
     }
 
     /**
@@ -535,10 +678,6 @@ public final class Terminal {
             refreshFlaws(player, true);
         });
         return true;
-    }
-
-    private int slotsInUse() {
-        return (int) programs.stream().filter(Program::needsSlot).count();
     }
 
     private void updateUsage(ServerPlayer player) {
@@ -783,8 +922,9 @@ public final class Terminal {
             throw new InstallException(preset.summary().name() + (kernel ? " is a program, not a kernel" : " is a kernel; install it from the Kernel tab"));
         }
         int level = data(player).tier().level();
-        if (level < preset.level()) {
-            throw new InstallException(preset.summary().name() + " requires gateway LV" + preset.level() + " (you are LV" + level + ")");
+        int required = requiredLevel(preset);
+        if (level < required) {
+            throw new InstallException(preset.summary().name() + " requires gateway LV" + required + " (you are LV" + level + ")");
         }
         return preset;
     }

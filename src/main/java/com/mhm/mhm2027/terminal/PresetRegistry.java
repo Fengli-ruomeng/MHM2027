@@ -33,16 +33,20 @@ public final class PresetRegistry {
     private static final String FOLDER = "edge_presets";
 
     /**
-     * @param level the gateway level needed to write and run it; the code runs at level + 1
+     * @param level    the gateway level needed to write and run it; the code runs at level + 1.
+     *                 For an Overload preset, the level its code runs at: gateways up to the
+     *                 Overload reach below it may run it, from an Overload socket.
+     * @param overload marked {@code overload = true}: runs from an Overload socket and heats the gateway
      */
-    public record Preset(Identifier id, String chunk, String source, ScriptSummary summary, int level, String description) {
+    public record Preset(Identifier id, String chunk, String source, ScriptSummary summary, int level, String description,
+                         boolean overload) {
         public boolean isKernel() {
             return summary.isKernel();
         }
 
         /** The level its locked code runs at: the privilege bypass. */
         public int privilegeLevel() {
-            return level + 1;
+            return overload ? level : level + 1;
         }
 
         /** How the terminal and panel refer to it. */
@@ -89,7 +93,7 @@ public final class PresetRegistry {
                 try (InputStream in = entry.getValue().open()) {
                     String source = new String(in.readAllBytes(), StandardCharsets.UTF_8);
                     ScriptAnalyzer.Analysis analysis = ScriptAnalyzer.analyze(path, source, true);
-                    loaded.put(id, new Preset(id, path, source, analysis.summary(), analysis.presetLevel(), analysis.description()));
+                    loaded.put(id, new Preset(id, path, source, analysis.summary(), analysis.presetLevel(), analysis.description(), analysis.overload()));
                 } catch (IOException | InstallException e) {
                     Mhm2027.LOGGER.error("Edge preset {} was rejected: {}", id, e.getMessage());
                 }

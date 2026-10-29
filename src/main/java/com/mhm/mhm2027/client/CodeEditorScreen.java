@@ -29,6 +29,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Util;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
@@ -520,9 +521,12 @@ public class CodeEditorScreen extends Screen {
                     : Component.translatable("mhm2027.editor.error", check.message());
             text(graphics, clip(message, width - x - 8), x, y, COLOR_ERROR);
         } else {
-            Component summary = check.kind().equals("kernel")
+            MutableComponent summary = check.kind().equals("kernel")
                     ? Component.translatable("mhm2027.editor.ok_kernel", check.tops(), check.ramMb(), check.details().size())
                     : Component.translatable("mhm2027.editor.ok_program", check.kind(), check.tops(), check.ramMb(), check.level());
+            if (check.overloadHeat() >= 0) {
+                summary.append(" ").append(Component.translatable("mhm2027.editor.overload", check.overloadHeat()));
+            }
             text(graphics, clip(summary, width - x - 8), x, y, COLOR_OK);
             if (!check.warnings().isEmpty()) {
                 String more = check.warnings().size() > 1 ? " (+" + (check.warnings().size() - 1) + ")" : "";

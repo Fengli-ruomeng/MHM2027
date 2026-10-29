@@ -7,6 +7,7 @@ import org.jspecify.annotations.Nullable;
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.InstalledPresets;
 import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.gateway.Sockets;
 import com.mhm.mhm2027.item.FirmwareItem;
 import com.mhm.mhm2027.item.ModItems;
 import com.mhm.mhm2027.terminal.Terminal;
@@ -201,12 +202,13 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
         playSound(SoundEvents.BEACON_ACTIVATE);
     }
 
-    /** Writes the firmware. Going Null wipes every program slot and the kernel. */
+    /** Writes the firmware. Going Null wipes the presets, the sockets and the kernel. */
     private static void apply(ServerPlayer player, Firmware firmware) {
         GatewayData data = player.getData(ModAttachments.GATEWAY);
         data.setLevel(firmware.target());
         if (firmware == Firmware.NULL) {
             player.setData(ModAttachments.PRESETS, InstalledPresets.EMPTY);
+            player.setData(ModAttachments.SOCKETS, Sockets.EMPTY);
             data.setKernel(GatewayData.DEFAULT_KERNEL);
         }
     }

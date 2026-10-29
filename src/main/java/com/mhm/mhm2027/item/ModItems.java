@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.potion.ModPotions;
 import com.mhm.mhm2027.station.Firmware;
 import com.mhm.mhm2027.station.ModBlocks;
 
@@ -16,6 +17,8 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.alchemy.PotionContents;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -37,7 +40,7 @@ public final class ModItems {
 
     /** The presets this mod ships, for the creative tab. Loot tables and other datapacks can add more. */
     private static final List<Identifier> BUILTIN_PROGRAM_PRESETS = List.of(
-            id("adrenaline_shot"), id("featherfall"), id("field_medic"));
+            id("adrenaline_shot"), id("featherfall"), id("field_medic"), id("overclock"));
     private static final List<Identifier> BUILTIN_KERNEL_PRESETS = List.of(id("aegis"));
 
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> EDGE_TAB = CREATIVE_TABS.register("edge", () -> CreativeModeTab.builder()
@@ -48,6 +51,7 @@ public final class ModItems {
                 output.accept(BLANK_CHIP.get());
                 output.accept(DATA_SHARD.get());
                 output.accept(FLASH_STATION.get());
+                ModPotions.CYBER.forEach(potion -> output.accept(PotionContents.createItemStack(Items.POTION, potion)));
                 FIRMWARE.values().forEach(item -> output.accept(item.get()));
                 BUILTIN_PROGRAM_PRESETS.forEach(preset -> output.accept(ChipActions.presetChip(preset, false)));
                 BUILTIN_KERNEL_PRESETS.forEach(preset -> output.accept(ChipActions.presetChip(preset, true)));

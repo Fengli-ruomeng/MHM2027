@@ -41,6 +41,9 @@ public final class Program implements ScriptHost {
     private final int tops;
     private final int ramMb;
     private final boolean needsSlot;
+    private final boolean overload;
+    /** The level its code reaches: a preset's privilege, or the highest API your own code uses. */
+    private final int codeLevel;
     private final int privilegeLevel;
     private final LuaSandbox sandbox;
     private final Map<String, LuaFunction> handlers;
@@ -66,8 +69,10 @@ public final class Program implements ScriptHost {
      * @param chunk          the name errors are reported against
      * @param level          the gateway level the install checks run against
      * @param privilegeLevel for a preset, the level its locked code runs at; -1 for your own code
+     * @param overloadReach  for your own code marked overload, how far above {@code level} it may reach
      */
-    Program(Terminal terminal, String id, String chunk, String source, int level, int maxTops, int privilegeLevel) throws InstallException {
+    Program(Terminal terminal, String id, String chunk, String source, int level, int maxTops, int privilegeLevel,
+            int overloadReach) throws InstallException {
         try {
             sandbox = new LuaSandbox();
         } catch (LuaError e) {
@@ -83,9 +88,12 @@ public final class Program implements ScriptHost {
         type = parsed.type();
         tops = parsed.tops();
 
-        Set<ApiSpec> apis = ScriptCompiler.scanApis(source, false, type, level);
+        overload = parsed.overload();
+        int allowed = overload && !isPreset() ? level + overloadReach : level;
+        Set<ApiSpec> apis = ScriptCompiler.scanApis(source, false, type, allowed);
         ramMb = ScriptCompiler.programRam(type, apis);
         needsSlot = apis.stream().anyMatch(ApiSpec::needsSlot);
+        codeLevel = isPreset() ? privilegeLevel : apis.stream().mapToInt(ApiSpec::minLevel).max().orElse(0);
         handlers = ScriptCompiler.handlers(sandbox, ScriptEvents.PROGRAM_EVENTS);
     }
 
@@ -257,6 +265,15 @@ public final class Program implements ScriptHost {
 
     public boolean needsSlot() {
         return needsSlot;
+    }
+
+    /** Runs from an Overload socket, heating the gateway while it runs. */
+    public boolean isOverload() {
+        return overload;
+    }
+
+    public int codeLevel() {
+        return codeLevel;
     }
 
     public double averageTops() {
