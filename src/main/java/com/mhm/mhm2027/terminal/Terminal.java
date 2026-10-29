@@ -13,6 +13,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 import org.jspecify.annotations.Nullable;
+import org.squiddev.cobalt.LuaTable;
 import org.squiddev.cobalt.ValueFactory;
 import org.squiddev.cobalt.Varargs;
 
@@ -60,6 +61,8 @@ public final class Terminal {
     private final List<Program> programs = new ArrayList<>();
     private final Deque<String> log = new ArrayDeque<>();
     private final List<int[]> recoveringTops = new ArrayList<>();
+    /** TOPS committed by resist(): {amount, ticks left}. Held for the length of the attempt. */
+    private final List<int[]> resisting = new ArrayList<>();
     private final Map<String, Long> cooldowns = new HashMap<>();
     private final Map<Identifier, TimedModifier> modifiers = new HashMap<>();
 
@@ -194,6 +197,8 @@ public final class Terminal {
 
     /** Death: the body is gone, so programs and timed effects end. The kernel carries over. */
     void onDeath() {
+        Sessions.endAllOn(owner, "died");
+        Sessions.endAllBy(owner, "died");
         stopAllSilently();
         modifiers.clear();
         cooldowns.clear();
@@ -216,11 +221,18 @@ public final class Terminal {
     private void stopAllSilently() {
         programs.clear();
         recoveringTops.clear();
+        resisting.clear();
     }
 
+    /**
+     * Every reboot (voluntary, panic or kernel swap) ends attempts and open sessions on this
+     * terminal, and the sessions it holds on others, since its programs are gone.
+     */
     private void lock(String reason, int ticks) {
         lockedUntil = now + ticks;
         lockReason = reason;
+        Sessions.endAllOn(owner, reason);
+        Sessions.endAllBy(owner, reason);
     }
 
     // endregion
@@ -231,6 +243,7 @@ public final class Terminal {
         now++;
         boolean bodyChanged = tickModifiers(player);
         recoveringTops.removeIf(entry -> --entry[1] <= 0);
+        resisting.removeIf(entry -> --entry[1] <= 0);
 
         if (isRebooting()) {
             updateUsage(player);
@@ -326,11 +339,102 @@ public final class Terminal {
         for (int[] entry : recoveringTops) {
             recovering += (int) Math.ceil((double) entry[0] * entry[1] / TOPS_RECOVERY_TICKS);
         }
-        return kernel.topsReserve() + programs.stream().mapToInt(Program::tops).sum() + recovering;
+        int resisted = resisting.stream().mapToInt(entry -> entry[0]).sum();
+        return kernel.topsReserve() + programs.stream().mapToInt(Program::tops).sum() + recovering + resisted;
     }
 
     int freeTops(ServerPlayer player) {
         return data(player).tier().tops() - topsInUse();
+    }
+
+    // endregion
+
+    // region Defence
+
+    /**
+     * An access attempt on this terminal: programs hear about it (on_access_attempt, which can't
+     * decide), then the kernel's on_access_request decides. No hook, or a hook that fails, allows.
+     */
+    Access.Decision decideAccess(ServerPlayer attacker, String method, int tops, boolean escalate) {
+        ServerPlayer self = player();
+        if (self == null) {
+            return Access.Decision.ALLOW;
+        }
+        Supplier<Varargs> request = () -> accessRequest(attacker, self, method, tops, escalate);
+        fire(ScriptEvents.ON_ACCESS_ATTEMPT, request);
+        return Access.parse(kernel.callHook(this, Kernel.ON_ACCESS_REQUEST, request.get()));
+    }
+
+    /** req: who is trying, how, and with how much TOPS. */
+    private static LuaTable accessRequest(ServerPlayer attacker, ServerPlayer self, String method, int tops, boolean escalate) {
+        LuaTable request = new LuaTable();
+        request.rawset("from", EntityHandles.of(attacker, self));
+        request.rawset("method", ValueFactory.valueOf(method));
+        request.rawset("tops", ValueFactory.valueOf(tops));
+        request.rawset("escalate", ValueFactory.valueOf(escalate));
+        return request;
+    }
+
+    /** Pays Buffer for a defence (deny, closing a session). False if there isn't enough. */
+    boolean spendBuffer(double mb) {
+        ServerPlayer self = player();
+        if (self == null) {
+            return false;
+        }
+        GatewayData data = data(self);
+        if (data.bufferMb() < mb) {
+            return false;
+        }
+        data.setBufferMb(data.bufferMb() - mb);
+        return true;
+    }
+
+    /**
+     * resist(tops): holds TOPS out of what's free (always leaving 1) for {@code ticks}, and
+     * runs hot. Returns how many TOPS were actually committed.
+     */
+    int commitResist(int requested, int ticks) {
+        ServerPlayer self = player();
+        if (self == null) {
+            return 0;
+        }
+        int committed = Math.clamp(requested, 0, Math.max(0, freeTops(self) - 1));
+        if (committed > 0) {
+            resisting.add(new int[]{committed, ticks});
+            GatewayData data = data(self);
+            data.setHeat(data.heat() + committed * AccessRules.HEAT_PER_RESISTED_TOPS);
+            updateUsage(self);
+            log("kernel", "resisting with " + committed + " TOPS");
+        }
+        return committed;
+    }
+
+    /** Someone got in: the kernel's on_session_opened hook, then the programs' event of the same name. */
+    void sessionOpened(ServerPlayer attacker) {
+        ServerPlayer self = player();
+        if (self == null) {
+            return;
+        }
+        String address = Addresses.of(attacker.getUUID());
+        log("kernel", "session opened by " + address);
+        self.sendOverlayMessage(Component.translatable("mhm2027.access.session_opened", address).withStyle(ChatFormatting.RED));
+        kernel.callHook(this, Kernel.ON_SESSION_OPENED, EntityHandles.of(attacker, self));
+        fire(ScriptEvents.ON_SESSION_OPENED, () -> EntityHandles.of(attacker, self));
+    }
+
+    /** s.kill(name) from a root session: the program stops at once, without its on_stop. */
+    boolean kill(String name, String by) {
+        Optional<Program> program = find(name);
+        if (program.isEmpty()) {
+            return false;
+        }
+        programs.remove(program.get());
+        log(name, "killed by " + by);
+        withPlayer(player -> {
+            updateUsage(player);
+            refreshFlaws(player, true);
+        });
+        return true;
     }
 
     private int slotsInUse() {

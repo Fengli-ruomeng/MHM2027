@@ -142,5 +142,14 @@
   "mhm2027.command.mob_kernel": "已设置 %s 个生物的内核",
   "mhm2027.panel.state.scanning": "扫描中",
   "mhm2027.configuration.players": "玩家",
-  "mhm2027.configuration.playerTargets": "玩家可以以其他玩家为目标"
+  "mhm2027.configuration.playerTargets": "玩家可以以其他玩家为目标",
+  "mhm2027.access.attempt": "来自 %s 的访问尝试（%s）",
+  "mhm2027.access.escalating": "%s 正在提权到 root（%s）",
+  "mhm2027.access.wrong_guess": "%s 猜测了你没有的 %s 缺陷",
+  "mhm2027.access.session_opened": "%s 打开了会话",
+  "mhm2027.panel.state.accessing": "访问中",
+  "mhm2027.panel.state.escalating": "提权中",
+  "mhm2027.configuration.defence": "防御",
+  "mhm2027.configuration.denyBufferMb": "拒绝访问的缓冲区消耗（MB）",
+  "mhm2027.configuration.endSessionBufferMb": "关闭会话的缓冲区消耗（MB）"
 }

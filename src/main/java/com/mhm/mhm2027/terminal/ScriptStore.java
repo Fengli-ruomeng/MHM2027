@@ -36,7 +36,8 @@ public final class ScriptStore {
     private static final int MAX_FILES = 64;
     private static final String EXAMPLES_ROOT = "/" + Mhm2027.MODID + "/example_scripts/";
     private static final List<String> EXAMPLES = List.of(
-            "README.txt", "Adrenaline.lua", "Monitor.lua", "Status.lua", "Spinner.lua", "Bulwark.lua", "Scanner.lua");
+            "README.txt", "Adrenaline.lua", "Monitor.lua", "Status.lua", "Spinner.lua", "Bulwark.lua", "Scanner.lua",
+            "Counterpunch.lua", "Gatekeeper.lua");
     /** The examples shipped before the offered-examples record existed. */
     private static final List<String> FIRST_EXAMPLES = EXAMPLES.subList(0, 6);
     private static final String OFFERED_FILE = ".examples";

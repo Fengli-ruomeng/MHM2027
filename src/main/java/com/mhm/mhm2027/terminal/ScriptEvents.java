@@ -15,11 +15,17 @@ public final class ScriptEvents {
     public static final String ON_FLAW_CHANGED = "on_flaw_changed";
     /** Someone's remote.inspect finished on you. The argument is a handle on whoever scanned. */
     public static final String ON_SCANNED = "on_scanned";
-    public static final List<String> PROGRAM_EVENTS = List.of(
-            ON_START, ON_STOP, ON_RUN, ON_TIMER, ON_HIT_TAKEN, ON_HIT_DEALT, ON_KILL, ON_FLAW_CHANGED, ON_SCANNED);
+    /** Someone is trying to get in. Programs can react, but only the kernel's hook decides. */
+    public static final String ON_ACCESS_ATTEMPT = "on_access_attempt";
+    /**
+     * Someone got in. Both a kernel hook and a program event: the kernel answers first (raise an
+     * alarm, reboot, start a defence program), then programs hear about it.
+     */
+    public static final String ON_SESSION_OPENED = "on_session_opened";
+    public static final List<String> PROGRAM_EVENTS = List.of(ON_START, ON_STOP, ON_RUN, ON_TIMER, ON_HIT_TAKEN, ON_HIT_DEALT,
+            ON_KILL, ON_FLAW_CHANGED, ON_SCANNED, ON_ACCESS_ATTEMPT, ON_SESSION_OPENED);
 
     public static final String ON_ACCESS_REQUEST = "on_access_request";
-    public static final String ON_SESSION_OPENED = "on_session_opened";
     public static final String ON_LOW_RAM = "on_low_ram";
     public static final String ON_PANIC = "on_panic";
     public static final List<String> KERNEL_HOOKS = List.of(ON_ACCESS_REQUEST, ON_SESSION_OPENED, ON_LOW_RAM, ON_PANIC);

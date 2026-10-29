@@ -17,6 +17,7 @@ import org.squiddev.cobalt.Varargs;
 import org.squiddev.cobalt.function.LibFunction;
 import org.squiddev.cobalt.function.RegisteredFunction;
 
+import com.mhm.mhm2027.Config;
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.GatewayTier;
 
@@ -67,6 +68,7 @@ final class Apis {
     static void bindKernel(LuaSandbox sandbox, Terminal terminal, Supplier<? extends ScriptHost> host) {
         LuaTable globals = sandbox.globals();
         globals.rawset("sys", sys(terminal, host::get));
+        Access.bindDecisions(globals);
         bindCommon(globals, terminal, host::get);
     }
 
@@ -228,6 +230,22 @@ final class Apis {
             }
             return list;
         });
+        api(sys, ApiSpec.SYS_END_SESSION, terminal, host, (player, args) -> {
+            EntityHandles.Handle who = EntityHandles.check(args.arg(1), ApiSpec.SYS_END_SESSION.id());
+            Sessions.Session session = Sessions.on(player.getUUID(), who.target());
+            if (session == null) {
+                return varargsOf(Constants.FALSE, valueOf("no_session"));
+            }
+            if (!terminal.spendBuffer(Config.END_SESSION_BUFFER_MB.get())) {
+                return varargsOf(Constants.FALSE, valueOf("no_buffer"));
+            }
+            Sessions.close(session, "closed by defender");
+            return Constants.TRUE;
+        });
+        api(sys, ApiSpec.SYS_REBOOT, terminal, host, (player, args) -> {
+            terminal.reboot();
+            return Constants.TRUE;
+        });
         awaitApi(sys, ApiSpec.SYS_SLEEP, terminal, host, (player, args) -> {
             double seconds = args.arg(1).checkDouble();
             if (seconds < 0.05 || seconds > 60) {
@@ -285,6 +303,13 @@ final class Apis {
             LuaValue target = args.arg(1);
             EntityHandles.check(target, ApiSpec.REMOTE_INSPECT.id());
             return new Inspection(terminal, target);
+        });
+        awaitApi(remote, ApiSpec.REMOTE_ACCESS, terminal, host, (player, args) -> {
+            LuaValue target = args.arg(1);
+            EntityHandles.check(target, ApiSpec.REMOTE_ACCESS.id());
+            String method = args.arg(2).isNil() ? Access.FORCE : args.arg(2).checkString();
+            // awaitApi already refuses kernels, so the caller is a program.
+            return Access.begin(terminal, (Program) host.get(), player, target, method);
         });
         return remote;
     }

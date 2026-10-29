@@ -59,6 +59,11 @@ public record ApiSpec(String id, String params, boolean kernel, int minLevel, in
     public static final ApiSpec REMOTE_TARGET = register(new ApiSpec("remote.target", "", false, 0, 2, 2, 0, false));
     public static final ApiSpec REMOTE_SCAN = register(new ApiSpec("remote.scan", "radius", false, 0, 8, 4, 0, false));
     public static final ApiSpec REMOTE_INSPECT = register(new ApiSpec("remote.inspect", "target", false, 0, 5, 4, 0, false));
+    public static final ApiSpec REMOTE_ACCESS = register(new ApiSpec("remote.access", "target, method", false, 0, 6, 6, 0, false));
+
+    // Defences. A kernel hook may use these too.
+    public static final ApiSpec SYS_END_SESSION = register(new ApiSpec("sys.end_session", "who", true, 0, 3, 1, 0, false));
+    public static final ApiSpec SYS_REBOOT = register(new ApiSpec("sys.reboot", "", true, 0, 2, 1, 0, false));
 
     private static ApiSpec read(String id) {
         return register(new ApiSpec(id, "", false, 0, 1, 1, 0, false));

@@ -98,7 +98,8 @@ final class ScriptCompiler {
     static Map<String, LuaFunction> kernelHooks(LuaSandbox sandbox) throws InstallException {
         Map<String, LuaFunction> hooks = handlers(sandbox, ScriptEvents.KERNEL_HOOKS);
         for (String event : ScriptEvents.PROGRAM_EVENTS) {
-            if (!sandbox.globals().rawget(event).isNil()) {
+            // on_session_opened is both a hook and a program event; in a kernel it's the hook.
+            if (!ScriptEvents.KERNEL_HOOKS.contains(event) && !sandbox.globals().rawget(event).isNil()) {
                 throw new InstallException(event + " is a program event; kernels define hooks (" + String.join(", ", ScriptEvents.KERNEL_HOOKS) + ")");
             }
         }

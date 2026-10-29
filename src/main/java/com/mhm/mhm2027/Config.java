@@ -43,8 +43,20 @@ public class Config {
     }
 
     public static final ModConfigSpec.BooleanValue PLAYER_TARGETS = BUILDER
-            .comment("Whether players' programs can scan, inspect and (later) access other players. Mobs are always targets")
+            .comment("Whether players' programs can scan, inspect and access other players. Mobs are always targets")
             .define("playerTargets", true);
+
+    static {
+        BUILDER.pop().push("defence");
+    }
+
+    public static final ModConfigSpec.DoubleValue DENY_BUFFER_MB = BUILDER
+            .comment("Buffer (MB) a kernel pays to deny an access attempt")
+            .defineInRange("denyBufferMb", 256.0, 0.0, 1048576.0);
+
+    public static final ModConfigSpec.DoubleValue END_SESSION_BUFFER_MB = BUILDER
+            .comment("Buffer (MB) it costs to close a session someone opened on you")
+            .defineInRange("endSessionBufferMb", 512.0, 0.0, 1048576.0);
 
     static {
         BUILDER.pop();

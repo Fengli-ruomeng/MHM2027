@@ -142,5 +142,14 @@
   "mhm2027.command.mob_kernel": "Set the kernel of %s mob(s)",
   "mhm2027.panel.state.scanning": "scanning",
   "mhm2027.configuration.players": "Players",
-  "mhm2027.configuration.playerTargets": "Players Can Target Players"
+  "mhm2027.configuration.playerTargets": "Players Can Target Players",
+  "mhm2027.access.attempt": "Access attempt from %s (%s)",
+  "mhm2027.access.escalating": "%s is escalating to root (%s)",
+  "mhm2027.access.wrong_guess": "%s guessed a %s flaw you don't have",
+  "mhm2027.access.session_opened": "Session opened by %s",
+  "mhm2027.panel.state.accessing": "accessing",
+  "mhm2027.panel.state.escalating": "escalating",
+  "mhm2027.configuration.defence": "Defence",
+  "mhm2027.configuration.denyBufferMb": "Buffer Cost to Deny (MB)",
+  "mhm2027.configuration.endSessionBufferMb": "Buffer Cost to End a Session (MB)"
 }
