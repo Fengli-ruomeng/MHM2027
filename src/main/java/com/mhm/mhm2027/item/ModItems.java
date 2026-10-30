@@ -37,6 +37,10 @@ public final class ModItems {
     public static final DeferredItem<Item> DATA_SHARD = ITEMS.registerSimpleItem("data_shard");
     public static final Map<Firmware, DeferredItem<FirmwareItem>> FIRMWARE = firmwareItems();
     public static final DeferredItem<BlockItem> FLASH_STATION = ITEMS.registerSimpleBlockItem(ModBlocks.FLASH_STATION);
+    /** KuyoZ Mech utility gear. */
+    public static final DeferredItem<ScannerItem> SCANNER = ITEMS.registerItem("scanner", ScannerItem::new, properties -> properties.stacksTo(1));
+    public static final DeferredItem<EmpActivatorItem> EMP_ACTIVATOR = ITEMS.registerItem("emp_activator", EmpActivatorItem::new,
+            properties -> properties.stacksTo(16));
 
     /** The presets this mod ships, for the creative tab. Loot tables and other datapacks can add more. */
     private static final List<Identifier> BUILTIN_PROGRAM_PRESETS = List.of(
@@ -51,6 +55,8 @@ public final class ModItems {
                 output.accept(BLANK_CHIP.get());
                 output.accept(DATA_SHARD.get());
                 output.accept(FLASH_STATION.get());
+                output.accept(SCANNER.get());
+                output.accept(EMP_ACTIVATOR.get());
                 ModPotions.CYBER.forEach(potion -> output.accept(PotionContents.createItemStack(Items.POTION, potion)));
                 FIRMWARE.values().forEach(item -> output.accept(item.get()));
                 BUILTIN_PROGRAM_PRESETS.forEach(preset -> output.accept(ChipActions.presetChip(preset, false)));

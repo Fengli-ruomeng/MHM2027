@@ -223,5 +223,20 @@
   "mhm2027.configuration.leakShare": "Overload Leak per Second (share of RAM)",
   "mhm2027.configuration.lockSeconds": "Overload Lock after Overheating (s)",
   "mhm2027.configuration.potions": "Potions",
-  "mhm2027.configuration.bufferRestoreShares": "Buffer Restored per Potion Level"
+  "mhm2027.configuration.bufferRestoreShares": "Buffer Restored per Potion Level",
+  "item.mhm2027.scanner.tagline": "A path previously unconsidered.",
+  "item.mhm2027.emp_activator.tagline": "Let's hope no one dies because of this.",
+  "tooltip.mhm2027.kuyoz": "KuyoZ Mech",
+  "item.mhm2027.scanner": "Scanner",
+  "item.mhm2027.emp_activator": "EMP Activator",
+  "message.mhm2027.kuyoz.null": "A Null gateway can't use cyber gear",
+  "message.mhm2027.scanner.nothing": "No gateway in sight",
+  "message.mhm2027.scanner.target": "%s · %s · LV%s · %s m",
+  "message.mhm2027.scanner.no_flaws": "No flaws",
+  "message.mhm2027.scanner.flaws": "Flaws:",
+  "message.mhm2027.emp.pulse": "EMP pulse: %s gateway(s) hit",
+  "message.mhm2027.emp.hit": "EMP: your gateway was forced to reboot",
+  "mhm2027.configuration.gear": "Gear",
+  "mhm2027.configuration.empRadius": "EMP Radius (blocks)",
+  "mhm2027.configuration.empMobStunSeconds": "EMP Mob Stun (s)"
 }

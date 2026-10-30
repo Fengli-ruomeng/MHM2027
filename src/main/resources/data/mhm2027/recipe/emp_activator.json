@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "mhm2027:blank_chip",
+    "minecraft:copper_ingot",
+    "minecraft:copper_ingot",
+    "minecraft:redstone",
+    "minecraft:redstone",
+    "mhm2027:data_shard",
+    "minecraft:white_dye"
+  ],
+  "result": {
+    "id": "mhm2027:emp_activator",
+    "count": 1
+  }
+}

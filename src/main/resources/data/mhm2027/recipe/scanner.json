@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "G": "minecraft:glass_pane",
+    "C": "mhm2027:blank_chip",
+    "R": "minecraft:redstone",
+    "W": "minecraft:white_dye"
+  },
+  "pattern": [
+    "IGI",
+    "ICI",
+    "WRW"
+  ],
+  "result": {
+    "id": "mhm2027:scanner",
+    "count": 1
+  }
+}

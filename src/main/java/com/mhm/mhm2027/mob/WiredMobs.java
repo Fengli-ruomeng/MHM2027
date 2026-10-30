@@ -175,6 +175,12 @@ public final class WiredMobs {
         return WiredRules.level(kind.minLevel, kind.maxLevel, level.dimension() == Level.OVERWORLD ? (int) Math.floor(y) : Integer.MIN_VALUE);
     }
 
+    /** An EMP hit: the mob loses its look at its target and any access attempt it has running. */
+    public static void disrupt(Mob mob) {
+        SCANS.remove(mob.getUUID());
+        ATTEMPTS.remove(mob.getUUID());
+    }
+
     // region Spawning and drops
 
     @SubscribeEvent

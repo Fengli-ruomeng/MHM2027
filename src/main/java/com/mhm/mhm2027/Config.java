@@ -115,6 +115,18 @@ public class Config {
             .defineInRange("lockSeconds", 60, 0, 3600);
 
     static {
+        BUILDER.pop().push("gear");
+    }
+
+    public static final ModConfigSpec.DoubleValue EMP_RADIUS = BUILDER
+            .comment("Blocks an EMP Activator's pulse reaches")
+            .defineInRange("empRadius", 8.0, 1.0, 64.0);
+
+    public static final ModConfigSpec.IntValue EMP_MOB_STUN_SECONDS = BUILDER
+            .comment("Seconds an EMP pulse stuns gateway mobs")
+            .defineInRange("empMobStunSeconds", 3, 0, 60);
+
+    static {
         BUILDER.pop().push("potions");
     }
 

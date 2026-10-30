@@ -223,5 +223,20 @@
   "mhm2027.configuration.leakShare": "过载每秒泄漏（占内存比例）",
   "mhm2027.configuration.lockSeconds": "过热后过载锁定时间（秒）",
   "mhm2027.configuration.potions": "药水",
-  "mhm2027.configuration.bufferRestoreShares": "每级药水恢复的缓冲区比例"
+  "mhm2027.configuration.bufferRestoreShares": "每级药水恢复的缓冲区比例",
+  "item.mhm2027.scanner.tagline": "A path previously unconsidered.",
+  "item.mhm2027.emp_activator.tagline": "Let's hope no one dies because of this.",
+  "tooltip.mhm2027.kuyoz": "KuyoZ Mech",
+  "item.mhm2027.scanner": "扫描仪",
+  "item.mhm2027.emp_activator": "EMP 激活器",
+  "message.mhm2027.kuyoz.null": "Null 网关无法使用赛博装备",
+  "message.mhm2027.scanner.nothing": "视线内没有网关",
+  "message.mhm2027.scanner.target": "%s · %s · LV%s · %s 米",
+  "message.mhm2027.scanner.no_flaws": "没有缺陷",
+  "message.mhm2027.scanner.flaws": "缺陷：",
+  "message.mhm2027.emp.pulse": "EMP 脉冲：命中 %s 个网关",
+  "message.mhm2027.emp.hit": "EMP：你的网关被迫重启",
+  "mhm2027.configuration.gear": "装备",
+  "mhm2027.configuration.empRadius": "EMP 半径（格）",
+  "mhm2027.configuration.empMobStunSeconds": "EMP 生物眩晕（秒）"
 }

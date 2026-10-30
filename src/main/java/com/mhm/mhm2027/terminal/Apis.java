@@ -24,19 +24,11 @@ import com.mhm.mhm2027.gateway.GatewayTier;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.food.FoodData;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
 
 /**
  * The Lua side of the first API set: {@code me} (your body), {@code sys} (your terminal),
@@ -286,7 +278,7 @@ final class Apis {
     private static LuaTable remote(Terminal terminal, Supplier<ScriptHost> host) {
         LuaTable remote = new LuaTable();
         api(remote, ApiSpec.REMOTE_TARGET, terminal, host, (player, args) ->
-                EntityHandles.of(crosshairTarget(player, Terminal.data(player).tier().scanRange()), player));
+                EntityHandles.of(Gateways.crosshair(player, Terminal.data(player).tier().scanRange()), player));
         api(remote, ApiSpec.REMOTE_SCAN, terminal, host, (player, args) -> {
             int range = Terminal.data(player).tier().scanRange();
             double radius = Math.clamp(args.arg(1).optDouble(range), 1, range);
@@ -312,21 +304,6 @@ final class Apis {
             return Access.begin(terminal, (Program) host.get(), player, target, method);
         });
         return remote;
-    }
-
-    /** The gateway entity under the crosshair, up to {@code range} blocks, not through walls. */
-    private static @Nullable Entity crosshairTarget(ServerPlayer player, double range) {
-        Vec3 eye = player.getEyePosition();
-        Vec3 look = player.getViewVector(1.0F);
-        Vec3 end = eye.add(look.scale(range));
-        BlockHitResult wall = player.level().clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
-        if (wall.getType() != HitResult.Type.MISS) {
-            end = wall.getLocation();
-        }
-        AABB area = player.getBoundingBox().expandTowards(look.scale(range)).inflate(1.0);
-        EntityHitResult hit = ProjectileUtil.getEntityHitResult(player, eye, end, area,
-                entity -> Gateways.targetable(entity, player), eye.distanceToSqr(end));
-        return hit == null ? null : hit.getEntity();
     }
 
     /**
