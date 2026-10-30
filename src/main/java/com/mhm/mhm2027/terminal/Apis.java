@@ -89,6 +89,8 @@ final class Apis {
         api(me, ApiSpec.ME_POS, terminal, host, (player, args) ->
                 varargsOf(valueOf(player.getX()), valueOf(player.getY()), valueOf(player.getZ())));
 
+        api(me, ApiSpec.ME_LOOKING_AT, terminal, host, (player, args) -> Sight.lookingAt(player));
+
         api(me, ApiSpec.ME_SPEED_BOOST, terminal, host, (player, args) -> {
             double amount = range(args, 1, 0.05, 0.5);
             int ticks = seconds(args, 2, 1, 10);
@@ -200,6 +202,13 @@ final class Apis {
                 throw new LuaError("sys.every is only for programs");
             }
             program.setTimer(args.arg(1).optDouble(0), terminal.now());
+            return Constants.NONE;
+        });
+        api(sys, ApiSpec.SYS_LOW_HEALTH, terminal, host, (player, args) -> {
+            if (!(host.get() instanceof Program program)) {
+                throw new LuaError("sys.low_health is only for programs");
+            }
+            program.setLowHealth(args.arg(1).isNil() ? Double.NaN : Math.max(0, args.arg(1).checkDouble()));
             return Constants.NONE;
         });
         api(sys, ApiSpec.SYS_NOTIFY, terminal, host, (player, args) -> {
@@ -314,12 +323,13 @@ final class Apis {
     private static final class Inspection implements LuaSandbox.Awaitable {
         private final Terminal terminal;
         private final LuaValue target;
-        private int ticksLeft = INSPECT_TICKS;
+        private int ticksLeft;
         private Varargs result = Constants.NIL;
 
         Inspection(Terminal terminal, LuaValue target) {
             this.terminal = terminal;
             this.target = target;
+            this.ticksLeft = terminal.kernel().settings().inspectTicks(INSPECT_TICKS);
         }
 
         @Override
@@ -413,9 +423,15 @@ final class Apis {
             if (i > 1) {
                 line.append(' ');
             }
-            line.append(args.arg(i).toString());
+            line.append(text(args.arg(i)));
         }
         terminal.log(caller == null ? "?" : caller.name(), clip(line.toString()));
+    }
+
+    /** How a value prints in the log: handles by their address, everything else as Lua shows it. */
+    private static String text(LuaValue value) {
+        EntityHandles.Handle handle = EntityHandles.handleOf(value);
+        return handle != null ? EntityHandles.describe(handle) : value.toString();
     }
 
     private static double range(Varargs args, int index, double min, double max) throws LuaError {

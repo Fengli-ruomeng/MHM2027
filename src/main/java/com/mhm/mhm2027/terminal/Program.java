@@ -42,6 +42,10 @@ public final class Program implements ScriptHost {
     private final int ramMb;
     private final boolean needsSlot;
     private final boolean overload;
+    private final int priority;
+    /** The on_low_health threshold in health points; NaN until sys.low_health sets one. */
+    private double lowHealth = Double.NaN;
+    private boolean belowLowHealth;
     /** The level its code reaches: a preset's privilege, or the highest API your own code uses. */
     private final int codeLevel;
     private final int privilegeLevel;
@@ -89,6 +93,7 @@ public final class Program implements ScriptHost {
         tops = parsed.tops();
 
         overload = parsed.overload();
+        priority = parsed.priority();
         int allowed = overload && !isPreset() ? level + overloadReach : level;
         Set<ApiSpec> apis = ScriptCompiler.scanApis(source, false, type, allowed);
         ramMb = ScriptCompiler.programRam(type, apis);
@@ -119,6 +124,21 @@ public final class Program implements ScriptHost {
 
     boolean stopRequested() {
         return stopRequested;
+    }
+
+    void setLowHealth(double hp) {
+        lowHealth = hp;
+    }
+
+    /** Whether on_low_health should fire: health has just dropped below the threshold. */
+    boolean crossedLowHealth(float health, float maxHealth) {
+        if (!handlers.containsKey(ScriptEvents.ON_LOW_HEALTH)) {
+            return false;
+        }
+        boolean below = health < EventRules.lowHealthThreshold(lowHealth, maxHealth);
+        boolean crossed = below && !belowLowHealth;
+        belowLowHealth = below;
+        return crossed;
     }
 
     void setTimer(double seconds, long now) {
@@ -265,6 +285,11 @@ public final class Program implements ScriptHost {
 
     public boolean needsSlot() {
         return needsSlot;
+    }
+
+    /** Its rank under a priority kernel, 1 to 9: higher runs first and is starved last. */
+    public int priority() {
+        return priority;
     }
 
     /** Runs from an Overload socket, heating the gateway while it runs. */

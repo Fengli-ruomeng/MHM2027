@@ -24,14 +24,22 @@ Examples
 
 Programs start with a header:
   program { name = "Name", type = "resident" | "transient" | "query", tops = 4 }
+  optional: priority = 1..9 (default 5), overload = true
 Kernels start with:
   kernel { name = "Name", schedule = "fair", gc = "normal", verify = "full", rate_limit = 4 }
+
+Kernel settings: every setting that opens a flaw also buys something
+  verify      fast / skip: your own access attempts run 1.25x / 1.5x faster   (memory flaw)
+  rate_limit  higher: your own inspections run faster (4 = 1 s, 8 = 0.5 s)    (intake flaw)
+  schedule    priority: out of TOPS, the lowest-priority programs crash
+              instead of the whole kernel panicking                         (scheduler flaw)
+  gc          aggressive: Leak clears twice as fast, for 2 more TOPS; lazy is the reverse
 
 Sockets
   Programs that change your body (any me.*_boost, fall_guard, regen_burst...) run only from
   a socket. Put them in one from the Processes tab while standing at a Flash Station.
   Programs that only read or decide need no socket. Your level sets how many sockets you have.
-  Overload sockets (LV4 and up) take programs whose header says overload = true. Their code
+  Overload sockets (LV4 and up) take resident programs whose header says overload = true. Their code
   may reach above your level (presets by 6 levels, your own scripts by 2), and every second
   they run they add 2 Heat plus the level gap, and some Leak. At 100 Heat they crash and the
   Overload sockets lock for 60 s.
@@ -39,19 +47,22 @@ Sockets
 Program events: on_start, on_stop, on_run, on_timer, on_hit_taken(attacker, amount),
                 on_hit_dealt(target, amount), on_kill(target),
                 on_flaw_changed(class, severity), on_scanned(by),
-                on_access_attempt(req), on_session_opened(who)
+                on_access_attempt(req), on_session_opened(who),
+                on_low_health(hp)      once each time health drops below sys.low_health (30% of max until set)
+                on_program_crash(name) another of your programs crashed
 Kernel hooks:   on_access_request(req), on_session_opened(who), on_low_ram(free), on_panic(reason)
                 on_access_request returns allow(), deny(), delay(seconds) or resist(tops)
 
 APIs
   me.health() me.max_health() me.hunger() me.pos()                LV0
+  me.looking_at()  what's in reach under your crosshair: {type, id, entity | x, y, z}, or nil
   me.speed_boost(amount, seconds)                                 LV1
   me.jump_boost(amount, seconds) me.fall_guard(seconds)           LV2
   me.regen_burst(amount)                                          LV3
   me.max_health_boost(amount, seconds)                            LV5
   me.damage_boost(amount, seconds) me.knockback_resist(seconds)   LV6
   sys.ram() sys.tops() sys.heat() sys.leak() sys.buffer() sys.programs()
-  sys.start(name) sys.stop(name) sys.sleep(seconds) sys.every(seconds)
+  sys.start(name) sys.stop(name) sys.sleep(seconds) sys.every(seconds) sys.low_health(hp)
   sys.notify(text) sys.log(text) sys.flaws() print(...) chance(percent)
   sys.end_session(who) sys.reboot()
   remote.target() remote.scan(radius) remote.inspect(target)      LV0, programs only

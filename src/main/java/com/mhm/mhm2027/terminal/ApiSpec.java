@@ -31,6 +31,7 @@ public record ApiSpec(String id, String params, boolean kernel, int minLevel, in
     public static final ApiSpec ME_MAX_HEALTH = read("me.max_health");
     public static final ApiSpec ME_HUNGER = read("me.hunger");
     public static final ApiSpec ME_POS = read("me.pos");
+    public static final ApiSpec ME_LOOKING_AT = register(new ApiSpec("me.looking_at", "", false, 0, 2, 2, 0, false));
     public static final ApiSpec ME_SPEED_BOOST = register(new ApiSpec("me.speed_boost", "amount, seconds", false, 1, 2, 4, 8, true));
     public static final ApiSpec ME_JUMP_BOOST = register(new ApiSpec("me.jump_boost", "amount, seconds", false, 2, 2, 4, 8, true));
     public static final ApiSpec ME_FALL_GUARD = register(new ApiSpec("me.fall_guard", "seconds", false, 2, 2, 4, 10, true));
@@ -56,6 +57,7 @@ public record ApiSpec(String id, String params, boolean kernel, int minLevel, in
 
     // remote: other entities. Program-only, and available from LV0 with the same caps for everyone:
     // levels raise limits on your own body, not power over others.
+    public static final ApiSpec SYS_LOW_HEALTH = register(new ApiSpec("sys.low_health", "hp", false, 0, 1, 1, 0, false));
     public static final ApiSpec REMOTE_TARGET = register(new ApiSpec("remote.target", "", false, 0, 2, 2, 0, false));
     public static final ApiSpec REMOTE_SCAN = register(new ApiSpec("remote.scan", "radius", false, 0, 8, 4, 0, false));
     public static final ApiSpec REMOTE_INSPECT = register(new ApiSpec("remote.inspect", "target", false, 0, 5, 4, 0, false));

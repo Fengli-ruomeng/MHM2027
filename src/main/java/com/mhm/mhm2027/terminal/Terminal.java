@@ -2,6 +2,7 @@ package com.mhm.mhm2027.terminal;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -455,8 +456,18 @@ public final class Terminal {
         }
 
         if (!programs.isEmpty() && freeTops(player) <= 0) {
-            panic(player, "out of TOPS");
-            return;
+            if (!kernel.settings().ranksPrograms()) {
+                panic(player, "out of TOPS");
+                return;
+            }
+            starve(player);
+        }
+        float health = player.getHealth();
+        float maxHealth = player.getMaxHealth();
+        for (Program program : programs) {
+            if (program.crossedLowHealth(health, maxHealth)) {
+                program.enqueue(ScriptEvents.ON_LOW_HEALTH, () -> ValueFactory.valueOf(health));
+            }
         }
         if (now % 20 == 0 && data(player).isOutOfMemory() && !programs.isEmpty()) {
             handleLowRam(player);
@@ -508,6 +519,7 @@ public final class Terminal {
             programs.remove(program);
             data.setLeakMb(data.leakMb() + program.ramMb());
             log(program.name(), "crashed: overheated");
+            announceCrash(program);
         }
         int lockSeconds = Config.OVERLOAD_LOCK_SECONDS.get();
         overloadLockedUntil = now + lockSeconds * 20L;
@@ -531,6 +543,35 @@ public final class Terminal {
         refreshFlaws(player, false);
         log("kernel", "PANIC: " + reason);
         player.sendSystemMessage(Component.translatable("mhm2027.terminal.panic", reason).withStyle(ChatFormatting.RED));
+    }
+
+    /**
+     * A priority kernel out of TOPS: rather than a panic, the lowest-ranked programs crash (the
+     * newest first among equals) until TOPS fit again, each leaving some of its RAM as Leak.
+     */
+    private void starve(ServerPlayer player) {
+        GatewayData data = data(player);
+        while (!programs.isEmpty() && freeTops(player) <= 0) {
+            Program starved = programs.reversed().stream().min(Comparator.comparingInt(Program::priority)).orElseThrow();
+            programs.remove(starved);
+            data.setLeakMb(data.leakMb() + starved.ramMb() * PANIC_LEAK_SHARE);
+            log(starved.name(), "crashed: starved of TOPS");
+            announceCrash(starved);
+        }
+        recheckFlaws = true;
+        updateUsage(player);
+    }
+
+    /** on_program_crash for every other program still running. */
+    private void announceCrash(Program crashed) {
+        if (isRebooting() || flash != null) {
+            return;
+        }
+        for (Program other : programs) {
+            if (other != crashed) {
+                other.enqueue(ScriptEvents.ON_PROGRAM_CRASH, () -> ValueFactory.valueOf(crashed.name()));
+            }
+        }
     }
 
     /** Out of memory: on_low_ram decides what to stop; by default the newest program goes. */
@@ -814,6 +855,7 @@ public final class Terminal {
     }
 
     void notifyCrash(Program program) {
+        announceCrash(program);
         withPlayer(player -> player.sendOverlayMessage(
                 Component.translatable("mhm2027.terminal.crash", program.name()).withStyle(ChatFormatting.RED)));
     }

@@ -62,6 +62,17 @@ class OverloadAnalysisTest {
     }
 
     @Test
+    void oneShotProgramsCantOverload() {
+        // A transient or query program would apply its boosts and end before paying any Heat.
+        for (String type : new String[]{"transient", "query"}) {
+            String source = OWN_OVERLOAD.replace("tops = 4,", "type = \"" + type + "\", tops = 4,").replace("on_start", "on_run");
+            ScriptDiagnostics.Result result = ScriptDiagnostics.check("Surge", source, 4);
+            assertFalse(result.ok(), type);
+            assertTrue(result.message().contains("resident"), result.message());
+        }
+    }
+
+    @Test
     void theFlagMustBeABoolean() {
         ScriptDiagnostics.Result result = ScriptDiagnostics.check("Surge", OWN_OVERLOAD.replace("overload = true", "overload = 1"), 4);
         assertFalse(result.ok());

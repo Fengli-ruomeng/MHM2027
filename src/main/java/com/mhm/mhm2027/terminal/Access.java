@@ -44,6 +44,9 @@ public final class Access {
         /** The TOPS committed to the attempt. */
         int tops();
 
+        /** The attacker's kernel settings; verify decides how fast its attempts run. */
+        KernelSettings kernel();
+
         /** Called when the attempt opens a session; the result goes back to whoever is waiting. */
         Varargs opened(Sessions.Session session);
 
@@ -167,13 +170,14 @@ public final class Access {
         }
 
         int base = AccessRules.baseTicks(matched);
+        double speed = attacker.kernel().accessSpeed();
         double delay = decision.kind() == Decision.Kind.DELAY ? decision.seconds() : 0;
         if (decision.kind() == Decision.Kind.RESIST && defender != null) {
             // Resisting holds the TOPS for as long as the attempt would take at the new odds.
-            int estimate = AccessRules.durationTicks(base, attackerTops, defenderTops + decision.tops(), delay, escalate);
+            int estimate = AccessRules.durationTicks(base, attackerTops, defenderTops + decision.tops(), delay, escalate, speed);
             defenderTops += defender.commitResist(decision.tops(), estimate);
         }
-        int ticks = AccessRules.durationTicks(base, attackerTops, defenderTops, delay, escalate);
+        int ticks = AccessRules.durationTicks(base, attackerTops, defenderTops, delay, escalate, speed);
         warn(target, defender, entity, escalate ? "mhm2027.access.escalating" : "mhm2027.access.attempt", method);
         return new Attempt(attacker, target, defender, method, escalate, session, ticks);
     }
@@ -272,6 +276,11 @@ public final class Access {
             @Override
             public int tops() {
                 return program.tops();
+            }
+
+            @Override
+            public KernelSettings kernel() {
+                return terminal != null ? terminal.kernel().settings() : KernelSettings.DEFAULT;
             }
 
             @Override

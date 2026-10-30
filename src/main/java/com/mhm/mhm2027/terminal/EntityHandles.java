@@ -65,6 +65,11 @@ final class EntityHandles {
         return living;
     }
 
+    /** How a handle prints: in tostring(), sys.log and print. */
+    static String describe(@Nullable Handle handle) {
+        return handle == null ? "gateway ?" : "gateway " + handle.address() + " (" + handle.kind() + ")";
+    }
+
     static @Nullable Handle handleOf(LuaValue value) {
         return value instanceof LuaUserdata userdata && userdata.toUserdata() instanceof Handle handle ? handle : null;
     }
@@ -84,10 +89,7 @@ final class EntityHandles {
             Handle handle = handleOf(args.arg(1));
             return handle == null ? Constants.NIL : field(handle, args.arg(2).toString());
         }));
-        meta.rawset("__tostring", LuaSandbox.function("__tostring", (state, args) -> {
-            Handle handle = handleOf(args.arg(1));
-            return valueOf(handle == null ? "gateway ?" : "gateway " + handle.address() + " (" + handle.kind() + ")");
-        }));
+        meta.rawset("__tostring", LuaSandbox.function("__tostring", (state, args) -> valueOf(describe(handleOf(args.arg(1))))));
         meta.rawset("__eq", LuaSandbox.function("__eq", (state, args) -> {
             Handle a = handleOf(args.arg(1));
             Handle b = handleOf(args.arg(2));

@@ -18,6 +18,7 @@ import com.mhm.mhm2027.item.ModItems;
 import com.mhm.mhm2027.terminal.Access;
 import com.mhm.mhm2027.terminal.BodyEffects;
 import com.mhm.mhm2027.terminal.Gateways;
+import com.mhm.mhm2027.terminal.KernelSettings;
 import com.mhm.mhm2027.terminal.LuaSandbox;
 import com.mhm.mhm2027.terminal.Sessions;
 
@@ -109,6 +110,11 @@ public final class WiredMobs {
         @Override
         public int tops() {
             return WiredRules.attackTops(level);
+        }
+
+        @Override
+        public KernelSettings kernel() {
+            return entity.getData(ModAttachments.MOB_KERNEL);
         }
 
         @Override
@@ -257,7 +263,7 @@ public final class WiredMobs {
         }
         boolean stale = scan != null && scan.method() != null && now - scan.readyAt() > SCAN_MEMORY_TICKS;
         if (scan == null || !scan.target().equals(player.getUUID()) || stale) {
-            SCANS.put(id, new Scan(player.getUUID(), now + SCAN_TICKS, null));
+            SCANS.put(id, new Scan(player.getUUID(), now + skeleton.getData(ModAttachments.MOB_KERNEL).inspectTicks(SCAN_TICKS), null));
         } else if (scan.method() == null && now >= scan.readyAt()) {
             SCANS.put(id, new Scan(player.getUUID(), now, Access.inspectedBy(skeleton, player)));
         }

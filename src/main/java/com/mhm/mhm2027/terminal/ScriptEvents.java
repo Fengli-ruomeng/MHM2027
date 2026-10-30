@@ -22,8 +22,12 @@ public final class ScriptEvents {
      * alarm, reboot, start a defence program), then programs hear about it.
      */
     public static final String ON_SESSION_OPENED = "on_session_opened";
+    /** Health dropped below the threshold set with sys.low_health (30% of max until set). Fires once per drop. */
+    public static final String ON_LOW_HEALTH = "on_low_health";
+    /** Another of your programs crashed: an error, starved of TOPS, or overheated. */
+    public static final String ON_PROGRAM_CRASH = "on_program_crash";
     public static final List<String> PROGRAM_EVENTS = List.of(ON_START, ON_STOP, ON_RUN, ON_TIMER, ON_HIT_TAKEN, ON_HIT_DEALT,
-            ON_KILL, ON_FLAW_CHANGED, ON_SCANNED, ON_ACCESS_ATTEMPT, ON_SESSION_OPENED);
+            ON_KILL, ON_FLAW_CHANGED, ON_SCANNED, ON_ACCESS_ATTEMPT, ON_SESSION_OPENED, ON_LOW_HEALTH, ON_PROGRAM_CRASH);
 
     public static final String ON_ACCESS_REQUEST = "on_access_request";
     public static final String ON_LOW_RAM = "on_low_ram";

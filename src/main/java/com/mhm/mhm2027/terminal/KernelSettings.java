@@ -53,6 +53,38 @@ public record KernelSettings(String schedule, String gc, String verify, int rate
                 ScriptCompiler.intField(header, "rate_limit", DEFAULT.rateLimit, MIN_RATE_LIMIT, MAX_RATE_LIMIT));
     }
 
+    /** Your own inspections never take less than this, or more than {@link #MAX_INSPECT_TICKS}. */
+    public static final int MIN_INSPECT_TICKS = 5;
+    public static final int MAX_INSPECT_TICKS = 40;
+
+    /**
+     * verify trades checks on incoming traffic for outgoing speed: fast and skip make your own
+     * access attempts quicker, and are the MEMORY flaw's price.
+     */
+    public double accessSpeed() {
+        return switch (verify) {
+            case "fast" -> 1.25;
+            case "skip" -> 1.5;
+            default -> 1.0;
+        };
+    }
+
+    /**
+     * rate_limit sets how fast your own inspections run: at the default of 4 one takes the base
+     * time; a higher limit is quicker (and opens the INTAKE flaw), a lower one slower.
+     */
+    public int inspectTicks(int baseTicks) {
+        return Math.clamp(Math.round((float) baseTicks * DEFAULT.rateLimit / rateLimit), MIN_INSPECT_TICKS, MAX_INSPECT_TICKS);
+    }
+
+    /**
+     * schedule = "priority" ranks programs: when TOPS run out, the lowest-ranked ones are starved
+     * and crash instead of the whole kernel panicking.
+     */
+    public boolean ranksPrograms() {
+        return "priority".equals(schedule);
+    }
+
     /** Multiplier on the garbage-collection rate. */
     public double gcMultiplier() {
         return switch (gc) {

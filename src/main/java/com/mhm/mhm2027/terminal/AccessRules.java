@@ -61,7 +61,15 @@ public final class AccessRules {
      * delay the defender's kernel asked for.
      */
     public static int durationTicks(int baseTicks, int attackerTops, int defenderTops, double delaySeconds, boolean escalate) {
-        double base = escalate ? baseTicks * ESCALATE_SHARE : baseTicks;
+        return durationTicks(baseTicks, attackerTops, defenderTops, delaySeconds, escalate, 1.0);
+    }
+
+    /**
+     * @param attackerSpeed the attacker's kernel verify setting: 1 at full, more at fast or skip
+     */
+    public static int durationTicks(int baseTicks, int attackerTops, int defenderTops, double delaySeconds, boolean escalate,
+                                    double attackerSpeed) {
+        double base = (escalate ? baseTicks * ESCALATE_SHARE : baseTicks) / Math.max(1.0, attackerSpeed);
         int contest = Math.max(MIN_TICKS, (int) Math.round(base / speed(attackerTops, defenderTops)));
         return contest + (int) Math.round(Math.clamp(delaySeconds, 0, MAX_DELAY_SECONDS) * 20);
     }

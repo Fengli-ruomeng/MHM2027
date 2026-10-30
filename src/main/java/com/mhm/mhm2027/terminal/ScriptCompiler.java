@@ -62,11 +62,13 @@ final class ScriptCompiler {
     // region Headers
 
     /** {@code overload = true} marks a program that runs in an Overload socket, reaching above the gateway's level. */
-    private static final Set<String> PROGRAM_KEYS = Set.of("name", "type", "tops", "overload");
+    private static final Set<String> PROGRAM_KEYS = Set.of("name", "type", "tops", "overload", "priority");
+    /** {@code priority = 1..9} ranks a program under a priority kernel: higher runs first and starves last. */
+    static final int DEFAULT_PRIORITY = 5;
     /** Extra header fields only presets may set: the gateway level they require, and a blurb. */
     private static final Set<String> PRESET_KEYS = Set.of("level", "description");
 
-    record ProgramHeader(String name, ProgramType type, int tops, boolean overload) {
+    record ProgramHeader(String name, ProgramType type, int tops, boolean overload, int priority) {
     }
 
     static ProgramHeader programHeader(LuaTable header, String file, boolean preset, int maxTops) throws InstallException {
@@ -75,7 +77,12 @@ final class ScriptCompiler {
         String typeId = stringField(header, "type", ProgramType.RESIDENT.id());
         ProgramType type = ProgramType.byId(typeId).orElseThrow(() -> new InstallException("type must be resident, transient or query"));
         int tops = intField(header, "tops", 1, 1, Math.max(1, maxTops));
-        return new ProgramHeader(name, type, tops, boolField(header, "overload"));
+        boolean overload = boolField(header, "overload");
+        // Overload pays its Heat each second it runs, so a one-shot program would pay nothing.
+        if (overload && type != ProgramType.RESIDENT) {
+            throw new InstallException("Overload programs must be resident: they pay Heat for every second they run");
+        }
+        return new ProgramHeader(name, type, tops, overload, intField(header, "priority", DEFAULT_PRIORITY, 1, 9));
     }
 
     static void checkKernelKeys(LuaTable header, boolean preset) throws InstallException {
