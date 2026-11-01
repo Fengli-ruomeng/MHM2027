@@ -7,19 +7,18 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
 
-import org.jspecify.annotations.Nullable;
 import org.squiddev.cobalt.Constants;
 import org.squiddev.cobalt.LuaError;
-import org.squiddev.cobalt.LuaState;
 import org.squiddev.cobalt.LuaTable;
 import org.squiddev.cobalt.LuaValue;
 import org.squiddev.cobalt.Varargs;
 import org.squiddev.cobalt.function.LibFunction;
-import org.squiddev.cobalt.function.RegisteredFunction;
 
 import com.mhm.mhm2027.Config;
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.GatewayTier;
+import com.mhm.mhm2027.hud.Hud;
+import com.mhm.mhm2027.hud.HudEvent;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -212,7 +211,7 @@ final class Apis {
             return Constants.NONE;
         });
         api(sys, ApiSpec.SYS_NOTIFY, terminal, host, (player, args) -> {
-            player.sendOverlayMessage(Component.literal("[" + host.get().name() + "] " + clip(args.arg(1).toString())));
+            Hud.event(player, HudEvent.Kind.INFO, Hud.tag(host.get().name(), "NOTIFY"), Component.literal(clip(args.arg(1).toString())));
             return Constants.NONE;
         });
         api(sys, ApiSpec.SYS_LOG, terminal, host, (player, args) -> {

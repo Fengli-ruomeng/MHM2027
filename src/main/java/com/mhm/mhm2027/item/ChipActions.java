@@ -4,6 +4,8 @@ import java.util.Optional;
 
 import com.mhm.mhm2027.gateway.InstalledPresets;
 import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.hud.Hud;
+import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.terminal.InstallException;
 import com.mhm.mhm2027.terminal.PresetRegistry;
 import com.mhm.mhm2027.terminal.ScriptAnalyzer;
@@ -12,7 +14,6 @@ import com.mhm.mhm2027.terminal.ScriptSummary;
 import com.mhm.mhm2027.terminal.Terminal;
 import com.mhm.mhm2027.terminal.Terminals;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
@@ -46,9 +47,9 @@ public final class ChipActions {
             } else {
                 return;
             }
-            player.sendOverlayMessage(result.copy().withStyle(ChatFormatting.GREEN));
+            Hud.event(player, HudEvent.Kind.INFO, "CHIP // WRITE", result);
         } catch (InstallException e) {
-            player.sendOverlayMessage(Component.literal(e.getMessage()).withStyle(ChatFormatting.RED));
+            Hud.event(player, HudEvent.Kind.WARN, "CHIP // ERROR", Component.literal(e.getMessage()));
         }
     }
 

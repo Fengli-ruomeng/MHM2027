@@ -41,7 +41,7 @@ Every call, event and hook your scripts can use, taken from the mod's code.
 | `sys.stop(name)` | LV0 | yes |  |  | 1 MB | Stop a running program by name. |
 | `sys.sleep(seconds)` | LV0 |  |  |  | 0 MB | Pause this program for 0.05 to 60 seconds. Not in kernel hooks. |
 | `sys.every(seconds)` | LV0 |  |  |  | 1 MB | Fire `on_timer` every so many seconds (at least 0.25). 0 turns it off. |
-| `sys.notify(text)` | LV0 | yes |  |  | 1 MB | Show a short message above your hotbar. |
+| `sys.notify(text)` | LV0 | yes |  |  | 1 MB | Show a card on your HUD, tagged with the program's name. |
 | `sys.log(text)` | LV0 | yes |  |  | 0 MB | Write a line to the terminal log (the panel's Log tab). |
 | `sys.flaws()` | LV0 | yes |  |  | 0 MB | Your active flaws: a list of `{class, severity, cause}`. |
 | `sys.low_health(hp)` | LV0 |  |  |  | 1 MB | Set the health below which `on_low_health` fires. nil goes back to 30% of max. |

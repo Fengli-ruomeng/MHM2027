@@ -4,7 +4,8 @@ import java.util.List;
 
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.ModAttachments;
-import com.mhm.mhm2027.terminal.Addresses;
+import com.mhm.mhm2027.hud.Hud;
+import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.terminal.FlawRules;
 import com.mhm.mhm2027.terminal.Gateways;
 import com.mhm.mhm2027.terminal.Terminals;
@@ -59,7 +60,7 @@ public class ScannerItem extends KuyozItem {
         player.getCooldowns().addCooldown(stack, COOLDOWN_TICKS);
         LivingEntity target = Gateways.crosshair(player, player.getData(ModAttachments.GATEWAY).tier().scanRange());
         if (target == null) {
-            player.sendOverlayMessage(Component.translatable("message.mhm2027.scanner.nothing").withStyle(ChatFormatting.GRAY));
+            Hud.event(player, HudEvent.Kind.QUIET, "SCANNER // IDLE", Component.translatable("message.mhm2027.scanner.nothing"));
             return stack;
         }
         report(player, target);
@@ -70,24 +71,24 @@ public class ScannerItem extends KuyozItem {
         return stack;
     }
 
-    /** Two chat lines: who it is and its level, then its flaws. */
+    /** A card: who it is, its level and distance, then its flaws. */
     private static void report(ServerPlayer player, LivingEntity target) {
         GatewayData data = Gateways.of(target);
         int level = data == null ? -1 : data.level();
-        player.sendSystemMessage(Component.translatable("message.mhm2027.scanner.target", Addresses.of(target.getUUID()),
-                target.getName(), level, Math.round(target.distanceTo(player))).withStyle(ChatFormatting.AQUA));
+        Component title = Component.translatable("message.mhm2027.scanner.card", target.getName(), level, Math.round(target.distanceTo(player)));
+        String tag = Hud.tag(target, "SCAN");
         List<FlawRules.Hit> flaws = Gateways.flawsOf(target);
         if (flaws.isEmpty()) {
-            player.sendSystemMessage(Component.translatable("message.mhm2027.scanner.no_flaws").withStyle(ChatFormatting.GRAY));
+            Hud.event(player, HudEvent.Kind.INFO, tag, title, Component.translatable("message.mhm2027.scanner.no_flaws"));
             return;
         }
-        MutableComponent line = Component.translatable("message.mhm2027.scanner.flaws").withStyle(ChatFormatting.GRAY);
+        MutableComponent line = Component.translatable("message.mhm2027.scanner.flaws");
         for (int i = 0; i < flaws.size(); i++) {
             FlawRules.Hit hit = flaws.get(i);
             line.append(i == 0 ? " " : ", ").append(Component.literal(hit.className() + " ")
                     .append(Component.translatable("mhm2027.flaw." + hit.severity().id()))
-                    .withStyle(hit.severity().rank() >= 2 ? ChatFormatting.RED : ChatFormatting.YELLOW));
+                    .withStyle(hit.severity().rank() >= 2 ? ChatFormatting.LIGHT_PURPLE : ChatFormatting.GOLD));
         }
-        player.sendSystemMessage(line);
+        Hud.event(player, HudEvent.Kind.INFO, tag, title, line);
     }
 }

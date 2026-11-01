@@ -4,15 +4,34 @@ You join the world with an **LV0 gateway**. It's weak, but it already runs progr
 
 ## 1. Read the HUD
 
-The top-left corner shows your gateway at a glance:
+Edge draws its own HUD, the **Lens**.
 
-- **LV0** and your free **TOPS**: how much computing you have left.
-- **RAM**: what your programs and your Leak use, out of your total.
-- **Buffer**: your cyber health bar. Attacks and defences spend it, and it does not refill by itself.
-- **Heat**: shown once you start running hot.
-- **Flaws**: any weakness you have right now, such as `thermal` when you overheat.
+**Left edge: your gateway, as two vertical bars.**
 
-The details are in [Gateway and Resources](Gateway-and-Resources).
+- **B**, Buffer: your cyber health bar. Attacks and defences spend it, and it does not refill by itself.
+- **R**, RAM: white for your programs, violet for Leak, magenta when you're out of memory.
+- **H**, Heat, appears beside them while you're running warm, and turns magenta from 70.
+
+The numbers show for a moment whenever they change. Hold **Left Alt** (change it under Controls) to see everything: level, kernel, Buffer, RAM, TOPS and Heat. Flaws that come and go, such as `thermal`, appear as chips under the bars, and so does a warning when your TOPS run low.
+
+**Bottom left: your sockets.** S1, S2… and O1 are your sockets, with a short name for what sits in each. A lit border means the program is running; an Overload socket fills up with Heat.
+
+**Right side: event cards.** Everything the mod tells you arrives as a card instead of a chat message. The tag says who is talking, such as `10.71.4.200 // ACCESS` or `WATCHER // NOTIFY`, and the colour says how much it matters:
+
+| Colour | Means |
+| --- | --- |
+| Magenta | Someone is acting against you: an access attempt, a session, a panic |
+| Orange | Needs your attention: a crash, a refusal, a flash in progress |
+| Cyan | You or your programs: scans, notices, success |
+| Grey | Background |
+
+Cards fade after a few seconds; attacks stay longest.
+
+**Banners.** The moments that matter most also get a warning banner: a headline over a strip of caution tape that reads **DANGER**, **WARNING** or **NOTICE**. You'll see **SYSTEM BREACH** when someone gets into your gateway, **KERNEL PANIC**, **OVERHEAT**, **EMP**, **FIRMWARE FLASH** and **LV ONLINE**, and **OUT OF MEMORY** for as long as it lasts. The details are on the card that comes with it.
+
+**Glitches.** When you're hit or attacked, the HUD glitches and its text scrambles for a moment. You can turn the glitches down or off, and the banners off, under Mods → Edge → Config.
+
+The numbers behind all of this are in [Gateway and Resources](Gateway-and-Resources).
 
 ## 2. Open the panel
 

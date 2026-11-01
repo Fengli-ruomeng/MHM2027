@@ -43,6 +43,8 @@ Put the firmware and the shards in the station and press **Flash**. A flash take
 - your Buffer shows **0**;
 - you can still be hacked, faster than usual.
 
+While it runs, the right side of your screen fills with the firmware's code, decrypting line by line, with a progress bar under it.
+
 Stay within **6 blocks** of the station. The cost is only taken when the flash **completes**. If you walk away, die, log out or the station is broken, the flash is cancelled and nothing is used up.
 
 Afterwards your Buffer comes back to what it was; flashing doesn't refill it. Your kernel reloads at the new level, and new sockets appear empty.

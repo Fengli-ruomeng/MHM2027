@@ -47,7 +47,7 @@ class ApiReferenceTest {
         APIS.put("sys.stop", "Stop a running program by name.");
         APIS.put("sys.sleep", "Pause this program for 0.05 to 60 seconds. Not in kernel hooks.");
         APIS.put("sys.every", "Fire `on_timer` every so many seconds (at least 0.25). 0 turns it off.");
-        APIS.put("sys.notify", "Show a short message above your hotbar.");
+        APIS.put("sys.notify", "Show a card on your HUD, tagged with the program's name.");
         APIS.put("sys.log", "Write a line to the terminal log (the panel's Log tab).");
         APIS.put("sys.flaws", "Your active flaws: a list of `{class, severity, cause}`.");
         APIS.put("sys.low_health", "Set the health below which `on_low_health` fires. nil goes back to 30% of max.");

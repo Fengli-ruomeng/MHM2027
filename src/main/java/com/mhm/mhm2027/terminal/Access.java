@@ -12,8 +12,9 @@ import org.squiddev.cobalt.Varargs;
 
 import com.mhm.mhm2027.Config;
 import com.mhm.mhm2027.gateway.GatewayTier;
+import com.mhm.mhm2027.hud.Hud;
+import com.mhm.mhm2027.hud.HudEvent;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
@@ -331,11 +332,13 @@ public final class Access {
         return FlawSeverity.NONE;
     }
 
-    /** Tells a player target what is coming at them, on the action bar and in the log. */
+    /** Tells a player target what is coming at them, on a HUD card and in the log. */
     private static void warn(LivingEntity target, @Nullable Terminal defender, LivingEntity attacker, String key, String method) {
         if (target instanceof ServerPlayer player && defender != null) {
             String address = Addresses.of(attacker.getUUID());
-            player.sendOverlayMessage(Component.translatable(key, address, method).withStyle(ChatFormatting.RED));
+            Hud.event(player, HudEvent.Kind.ALERT, Hud.tag(attacker, "ACCESS"),
+                    Component.translatable(key.replace("mhm2027.access.", "mhm2027.hud.access."), method), Component.empty(),
+                    "access:" + address, 0);
             defender.log("kernel", key.substring(key.lastIndexOf('.') + 1).replace('_', ' ') + " from " + address + " (" + method + ")");
         }
     }

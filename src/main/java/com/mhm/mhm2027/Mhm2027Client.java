@@ -4,7 +4,7 @@ import org.lwjgl.glfw.GLFW;
 
 import com.mhm.mhm2027.client.EdgePanelScreen;
 import com.mhm.mhm2027.client.FlashStationScreen;
-import com.mhm.mhm2027.client.GatewayHud;
+import com.mhm.mhm2027.client.LensHud;
 import com.mhm.mhm2027.client.PanelNetworking;
 import com.mhm.mhm2027.station.ModBlocks;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -17,6 +17,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
@@ -36,20 +37,26 @@ public class Mhm2027Client {
     public static final KeyMapping OPEN_PANEL = new KeyMapping("key.mhm2027.open_panel", KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, CATEGORY);
 
+    /** Held: the gateway's full numbers beside the Lens bars. Left Alt by default. */
+    public static final KeyMapping LENS_DETAILS = new KeyMapping("key.mhm2027.lens_details", KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_LEFT_ALT, CATEGORY);
+
     public Mhm2027Client(ModContainer container) {
         // Allows NeoForge to create a config screen for this mod's configs.
         container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
+        container.registerConfig(ModConfig.Type.CLIENT, ClientConfig.SPEC);
     }
 
     @SubscribeEvent
     static void onRegisterGuiLayers(RegisterGuiLayersEvent event) {
-        event.registerAboveAll(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "gateway"), new GatewayHud());
+        event.registerAboveAll(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "gateway"), new LensHud());
     }
 
     @SubscribeEvent
     static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.registerCategory(CATEGORY);
         event.register(OPEN_PANEL);
+        event.register(LENS_DETAILS);
     }
 
     @SubscribeEvent

@@ -2,6 +2,8 @@ package com.mhm.mhm2027.item;
 
 import java.util.function.Consumer;
 
+import com.mhm.mhm2027.hud.Hud;
+import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.terminal.Terminals;
 
 import net.minecraft.ChatFormatting;
@@ -30,7 +32,7 @@ public abstract class KuyozItem extends Item {
     /** Null players can't use cyber gear. Tells them so and returns false. */
     protected static boolean usable(ServerPlayer player) {
         if (Terminals.isNull(player)) {
-            player.sendOverlayMessage(Component.translatable("message.mhm2027.kuyoz.null").withStyle(ChatFormatting.RED));
+            Hud.event(player, HudEvent.Kind.WARN, "KUYOZ // NULL", Component.translatable("message.mhm2027.kuyoz.null"));
             return false;
         }
         return true;

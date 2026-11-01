@@ -58,7 +58,7 @@ So: inspect first, then pick the target's worst flaw. Force always works, but it
 
 When someone tries to break in:
 
-- **You see it**: "Access attempt from 10.x.x.x (method)" above your hotbar.
+- **You see it**: a magenta card, `10.x.x.x // ACCESS`, naming the method.
 - **Your programs hear it**: `on_access_attempt(req)` with `req.from`, `req.method` and `req.tops`. They can react, but they can't decide.
 - **Your kernel decides**, through `on_access_request(req)`:
 

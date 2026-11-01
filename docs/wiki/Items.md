@@ -48,7 +48,7 @@ General-purpose cyber tools in white casings. None of them work on a Null gatewa
 
 > *A path previously unconsidered.*
 
-Hold use for 1 second while looking at a gateway within your scan range. It reads the gateway's address, name, level, distance and flaws into chat, just like `remote.inspect`, but with no program. The target's programs hear `on_scanned`.
+Hold use for 1 second while looking at a gateway within your scan range. It shows the gateway's name, level, distance and flaws on a card, just like `remote.inspect`, but with no program. The target's programs hear `on_scanned`.
 
 ```
 I G I      I = iron ingot, G = glass pane

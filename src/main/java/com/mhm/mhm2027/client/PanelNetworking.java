@@ -1,6 +1,8 @@
 package com.mhm.mhm2027.client;
 
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.hud.HudEvent;
+import com.mhm.mhm2027.hud.HudState;
 import com.mhm.mhm2027.network.EditorCheck;
 import com.mhm.mhm2027.network.EditorFile;
 import com.mhm.mhm2027.network.PanelMessage;
@@ -23,6 +25,8 @@ public final class PanelNetworking {
         event.register(PanelMessage.TYPE, (message, context) -> PanelState.accept(message));
         event.register(EditorFile.TYPE, (file, context) -> EditorState.accept(file));
         event.register(EditorCheck.TYPE, (check, context) -> EditorState.accept(check));
+        event.register(HudEvent.TYPE, (hudEvent, context) -> HudFeed.accept(hudEvent));
+        event.register(HudState.TYPE, (state, context) -> HudFeed.accept(state));
     }
 
     /** Don't show one world's terminal in the next. */
@@ -30,5 +34,6 @@ public final class PanelNetworking {
     static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         PanelState.reset();
         EditorState.reset();
+        HudFeed.reset();
     }
 }

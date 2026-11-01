@@ -1,13 +1,14 @@
 package com.mhm.mhm2027.item;
 
 import com.mhm.mhm2027.Config;
+import com.mhm.mhm2027.hud.Hud;
+import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.mob.WiredMobs;
 import com.mhm.mhm2027.terminal.BodyEffects;
 import com.mhm.mhm2027.terminal.Gateways;
 import com.mhm.mhm2027.terminal.Terminal;
 import com.mhm.mhm2027.terminal.Terminals;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.particles.ColorParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
@@ -59,7 +60,7 @@ public class EmpActivatorItem extends KuyozItem {
         }
         int hit = pulse(server, player);
         stack.consume(1, player);
-        player.sendSystemMessage(Component.translatable("message.mhm2027.emp.pulse", hit).withStyle(ChatFormatting.GOLD));
+        Hud.event(player, HudEvent.Kind.WARN, "EMP // PULSE", Component.translatable("message.mhm2027.emp.pulse", hit));
         return stack;
     }
 
@@ -78,7 +79,8 @@ public class EmpActivatorItem extends KuyozItem {
                 }
                 terminal.reboot();
                 terminal.log("kernel", "forced reboot: EMP");
-                player.sendOverlayMessage(Component.translatable("message.mhm2027.emp.hit").withStyle(ChatFormatting.RED));
+                Hud.banner(player, HudEvent.Kind.ALERT, Component.translatable("mhm2027.banner.emp"));
+                Hud.event(player, HudEvent.Kind.ALERT, Hud.tag(user, "EMP"), Component.translatable("message.mhm2027.emp.hit"));
             } else {
                 BodyEffects.neutralize(target, stunTicks);
                 if (target instanceof Mob mob) {

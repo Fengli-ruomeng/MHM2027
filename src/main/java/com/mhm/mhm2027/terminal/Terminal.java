@@ -24,8 +24,9 @@ import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.gateway.Sockets;
+import com.mhm.mhm2027.hud.Hud;
+import com.mhm.mhm2027.hud.HudEvent;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -85,6 +86,7 @@ public final class Terminal {
     private boolean recheckFlaws;
     private @Nullable Flash flash;
     private long flashHeldAt;
+    private float flashShare;
     private long kernelReadyAt;
     private long overloadLockedUntil;
 
@@ -325,6 +327,7 @@ public final class Terminal {
         GatewayData data = data(player);
         flash = new Flash(data.bufferMb(), data.tier().isNull());
         flashHeldAt = now;
+        flashShare = 0;
         stopAllSilently();
         // Sessions this gateway holds on others ran on programs that are gone now.
         Sessions.endAllBy(owner, "flashing");
@@ -348,13 +351,19 @@ public final class Terminal {
         data.setBufferMb(Math.min(max, data.bufferMb() + mb));
     }
 
-    /** The station calls this every tick it keeps the flash going. */
-    public void holdFlash() {
+    /** The station calls this every tick it keeps the flash going, with how far it has got. */
+    public void holdFlash(float share) {
         flashHeldAt = now;
+        flashShare = share;
     }
 
     public boolean isFlashing() {
         return flash != null;
+    }
+
+    /** How far the flash has got, 0 to 1; -1 when there is none. */
+    public float flashShare() {
+        return flash == null ? -1 : flashShare;
     }
 
     /**
@@ -524,7 +533,8 @@ public final class Terminal {
         int lockSeconds = Config.OVERLOAD_LOCK_SECONDS.get();
         overloadLockedUntil = now + lockSeconds * 20L;
         recheckFlaws = true;
-        player.sendOverlayMessage(Component.translatable("mhm2027.terminal.overheated", lockSeconds).withStyle(ChatFormatting.RED));
+        Hud.banner(player, HudEvent.Kind.ALERT, Component.translatable("mhm2027.banner.overheat"));
+        Hud.event(player, HudEvent.Kind.ALERT, "OVERLOAD // OVERHEAT", Component.translatable("mhm2027.terminal.overheated", lockSeconds));
     }
 
     /**
@@ -542,7 +552,8 @@ public final class Terminal {
         updateUsage(player);
         refreshFlaws(player, false);
         log("kernel", "PANIC: " + reason);
-        player.sendSystemMessage(Component.translatable("mhm2027.terminal.panic", reason).withStyle(ChatFormatting.RED));
+        Hud.banner(player, HudEvent.Kind.ALERT, Component.translatable("mhm2027.banner.panic"));
+        Hud.event(player, HudEvent.Kind.ALERT, "KERNEL // PANIC", Component.translatable("mhm2027.terminal.panic", reason));
     }
 
     /**
@@ -698,7 +709,9 @@ public final class Terminal {
         }
         String address = Addresses.of(attacker.getUUID());
         log("kernel", "session opened by " + address);
-        self.sendOverlayMessage(Component.translatable("mhm2027.access.session_opened", address).withStyle(ChatFormatting.RED));
+        Hud.event(self, HudEvent.Kind.ALERT, Hud.tag(attacker, "SESSION"), Component.translatable("mhm2027.hud.session_opened"),
+                Component.empty(), "access:" + address, 0);
+        Hud.banner(self, HudEvent.Kind.ALERT, Component.translatable("mhm2027.banner.breach"));
         if (flash != null) {
             return;
         }
@@ -856,8 +869,8 @@ public final class Terminal {
 
     void notifyCrash(Program program) {
         announceCrash(program);
-        withPlayer(player -> player.sendOverlayMessage(
-                Component.translatable("mhm2027.terminal.crash", program.name()).withStyle(ChatFormatting.RED)));
+        withPlayer(player -> Hud.event(player, HudEvent.Kind.WARN, Hud.tag(program.name(), "CRASH"),
+                Component.translatable("mhm2027.terminal.crash", program.name())));
     }
 
     public List<String> log() {

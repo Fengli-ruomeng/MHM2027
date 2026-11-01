@@ -8,12 +8,13 @@ import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.InstalledPresets;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.gateway.Sockets;
+import com.mhm.mhm2027.hud.Hud;
+import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.item.FirmwareItem;
 import com.mhm.mhm2027.item.ModItems;
 import com.mhm.mhm2027.terminal.Terminal;
 import com.mhm.mhm2027.terminal.Terminals;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.particles.ParticleTypes;
@@ -139,13 +140,14 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
             problem = problem(player, this);
         }
         if (problem != null) {
-            player.sendSystemMessage(problem.copy().withStyle(ChatFormatting.RED));
+            Hud.event(player, HudEvent.Kind.WARN, "FLASH // REFUSED", problem);
             return;
         }
         flasher = player.getUUID();
         progress = 0;
         terminal.beginFlash(player);
-        player.sendSystemMessage(Component.translatable("mhm2027.flash.started").withStyle(ChatFormatting.GOLD));
+        Hud.event(player, HudEvent.Kind.WARN, flashTag(), Component.translatable("mhm2027.flash.started"), Component.empty(), FLASH_KEY, 60);
+        Hud.banner(player, HudEvent.Kind.WARN, Component.translatable("mhm2027.banner.flash"));
         playSound(SoundEvents.BEACON_POWER_SELECT);
         setChanged();
     }
@@ -165,7 +167,7 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
             station.cancel(player, terminal, "left");
             return;
         }
-        terminal.holdFlash();
+        terminal.holdFlash((float) station.progress / FLASH_TICKS);
         station.progress++;
         if (station.progress >= FLASH_TICKS) {
             station.complete(player, terminal);
@@ -173,7 +175,8 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
         }
         if (station.progress % 20 == 0) {
             int secondsLeft = (FLASH_TICKS - station.progress) / 20;
-            player.sendOverlayMessage(Component.translatable("mhm2027.flash.progress", secondsLeft).withStyle(ChatFormatting.GOLD));
+            Hud.event(player, HudEvent.Kind.WARN, station.flashTag(), Component.translatable("mhm2027.flash.progress", secondsLeft),
+                    Component.translatable("mhm2027.flash.down"), FLASH_KEY, 40);
             ((ServerLevel) level).sendParticles(ParticleTypes.ELECTRIC_SPARK, pos.getX() + 0.5, pos.getY() + 1.05, pos.getZ() + 0.5,
                     4, 0.25, 0.05, 0.25, 0.0);
         }
@@ -197,8 +200,9 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
         flasher = null;
         progress = 0;
         setChanged();
-        player.sendSystemMessage(Component.translatable("mhm2027.flash.done", FirmwareItem.levelName(firmware.target()))
-                .withStyle(ChatFormatting.GREEN));
+        Hud.event(player, HudEvent.Kind.INFO, flashTag(firmware), Component.translatable("mhm2027.flash.done", FirmwareItem.levelName(firmware.target())),
+                Component.empty(), FLASH_KEY, 0);
+        Hud.banner(player, HudEvent.Kind.INFO, Component.translatable("mhm2027.banner.online", FirmwareItem.levelName(firmware.target())));
         playSound(SoundEvents.BEACON_ACTIVATE);
     }
 
@@ -223,8 +227,8 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
         progress = 0;
         setChanged();
         if (player != null) {
-            player.sendSystemMessage(Component.translatable("mhm2027.flash.cancelled",
-                    Component.translatable("mhm2027.flash.reason." + reason)).withStyle(ChatFormatting.RED));
+            Hud.event(player, HudEvent.Kind.ALERT, "FLASH // CANCELLED", Component.translatable("mhm2027.flash.cancelled",
+                    Component.translatable("mhm2027.flash.reason." + reason)), Component.empty(), FLASH_KEY, 0);
         }
     }
 
@@ -239,6 +243,18 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
             }
             flasher = null;
         }
+    }
+
+    /** One card per flash: each update replaces the last. */
+    private static final String FLASH_KEY = "flash";
+
+    /** "FLASH // LV5" for the firmware in the slot. */
+    private String flashTag() {
+        return items.get(FIRMWARE_SLOT).getItem() instanceof FirmwareItem item ? flashTag(item.firmware()) : "FLASH";
+    }
+
+    private static String flashTag(Firmware firmware) {
+        return "FLASH // " + (firmware.target() < 0 ? "NULL" : "LV" + firmware.target());
     }
 
     private void playSound(SoundEvent sound) {
