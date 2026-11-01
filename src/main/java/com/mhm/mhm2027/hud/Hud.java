@@ -34,6 +34,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 @EventBusSubscriber(modid = Mhm2027.MODID)
 public final class Hud {
     private static final int STATE_INTERVAL_TICKS = 10;
+    private static final int STARTUP_BOOT_TICKS = 60;
     private static final Map<UUID, HudState> LAST_STATE = new HashMap<>();
 
     private Hud() {
@@ -45,6 +46,7 @@ public final class Hud {
         // Client handlers are registered on the client side, in Mhm2027Client.
         registrar.playToClient(HudEvent.TYPE, HudEvent.STREAM_CODEC);
         registrar.playToClient(HudState.TYPE, HudState.STREAM_CODEC);
+        registrar.playToClient(HudBoot.TYPE, HudBoot.STREAM_CODEC);
     }
 
     // region Events
@@ -73,6 +75,19 @@ public final class Hud {
      */
     public static void banner(ServerPlayer player, HudEvent.Kind kind, Component title) {
         PacketDistributor.sendToPlayer(player, new HudEvent(kind, "", title, Component.empty(), "", 0, true));
+    }
+
+    /** The gateway is booting: the client plays the boot sequence for {@code ticks}, with this log. */
+    public static void boot(ServerPlayer player, String reason, int ticks, List<HudBoot.Line> lines) {
+        PacketDistributor.sendToPlayer(player, new HudBoot(reason, ticks, lines));
+    }
+
+    /** Joining a world boots the gateway too. */
+    @SubscribeEvent
+    static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player && !Terminals.isNull(player)) {
+            boot(player, HudBoot.STARTUP, STARTUP_BOOT_TICKS, Terminals.get(player).bootLog(player, HudBoot.STARTUP));
+        }
     }
 
     /** "10.71.4.200 // ACCESS": the source is an entity's address. */

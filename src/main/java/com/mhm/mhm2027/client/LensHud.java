@@ -9,6 +9,7 @@ import com.mhm.mhm2027.Mhm2027Client;
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.hud.HudBoot;
 import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.hud.HudState;
 
@@ -31,7 +32,7 @@ import net.neoforged.neoforge.client.gui.GuiLayer;
  * <li>Beside the hotbar: the socket loadout as slots.</li>
  * <li>Right side: event cards in place of chat and action-bar messages; their text decrypts in.</li>
  * <li>Upper third: scrolling warning banners for critical moments.</li>
- * <li>Over everything: glitches when you're hit or attacked.</li>
+ * <li>Over everything: glitches when you're hit or attacked, and the boot screen after a reboot.</li>
  * </ul>
  * Hidden with F1 and while the F3 screen is open.
  */
@@ -70,6 +71,16 @@ public class LensHud implements GuiLayer {
     private static final int STRIPES = 14;
     private static final float TITLE_SCALE = 1.25f;
     private static final float WARM_HEAT = 5;
+    private static final int BOOT_SHADE = 0xEB05070C;
+    /** Shares of the boot: the log streams in first, the logo follows, then the screen clears and the HUD returns. */
+    private static final float BOOT_LOG_START = 0.05f;
+    private static final float BOOT_LOG_SPAN = 0.6f;
+    private static final float BOOT_LOGO = 0.45f;
+    private static final float BOOT_CLEAR = 0.8f;
+    private static final float BARS_RETURN = 0.82f;
+    private static final float SLOTS_RETURN = 0.88f;
+    private static final float CARDS_RETURN = 0.94f;
+    private static final float LOGO_SCALE = 4f;
 
     private static int lastHurtTime;
     private static double lastBuffer = -1;
@@ -96,14 +107,25 @@ public class LensHud implements GuiLayer {
         int width = graphics.guiWidth();
         int height = graphics.guiHeight();
         GatewayData data = player.getData(ModAttachments.GATEWAY);
+        // While booting, the HUD is gone; it comes back piece by piece as the boot finishes.
+        float boot = HudFeed.boot(now);
         if (!data.tier().isNull()) {
-            bars(graphics, font, data, height, now, jitter);
-            slots(graphics, font, width, height);
+            if (boot < 0 || boot >= BARS_RETURN) {
+                bars(graphics, font, data, height, now, jitter);
+            }
+            if (boot < 0 || boot >= SLOTS_RETURN) {
+                slots(graphics, font, width, height);
+            }
         }
-        flashCode(graphics, font, width, height, now);
-        cards(graphics, font, player, width, now, glitch, jitter);
-        if (ClientConfig.BANNERS.get()) {
-            banner(graphics, font, data, width, height, now);
+        if (boot < 0 || boot >= CARDS_RETURN) {
+            flashCode(graphics, font, width, height, now);
+            cards(graphics, font, player, width, now, glitch, jitter);
+            if (ClientConfig.BANNERS.get()) {
+                banner(graphics, font, data, width, height, now);
+            }
+        }
+        if (boot >= 0) {
+            bootScreen(graphics, font, width, height, now, boot);
         }
         if (glitch > 0.02f) {
             glitchOverlay(graphics, font, width, height, now, glitch);
@@ -498,6 +520,82 @@ public class LensHud implements GuiLayer {
         int barWidth = Math.max(0, x + regionWidth - barX);
         graphics.fill(barX, bottom + 2, barX + barWidth, bottom + 6, CELL_OFF);
         graphics.fill(barX, bottom + 2, barX + Math.round(barWidth * share), bottom + 6, ORANGE);
+    }
+
+    // endregion
+
+    // region Boot
+
+    /**
+     * The boot sequence, over everything: the gateway's real boot log streams down the left,
+     * the plain white EDGE logo appears, a bar fills, and for the last fifth the screen clears
+     * while the HUD comes back. It lasts exactly as long as the reboot, and can't be skipped.
+     */
+    private static void bootScreen(GuiGraphicsExtractor graphics, Font font, int width, int height, long now, float boot) {
+        HudBoot event = HudFeed.bootEvent();
+        if (event == null) {
+            return;
+        }
+        float alpha = boot < BOOT_CLEAR ? 1f : Math.clamp((1f - boot) / (1f - BOOT_CLEAR), 0f, 1f);
+        graphics.fill(0, 0, width, height, fade(BOOT_SHADE, alpha));
+
+        int x = 16;
+        int y = 14;
+        graphics.text(font, "EDGE GATEWAY FIRMWARE", x, y, fade(VIOLET, alpha), false);
+        y += 13;
+        List<HudBoot.Line> lines = event.lines();
+        int unitWidth = font.width("storage") + 8;
+        int shown = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            if (boot < BOOT_LOG_START + i * (BOOT_LOG_SPAN / lines.size())) {
+                break;
+            }
+            HudBoot.Line line = lines.get(i);
+            graphics.text(font, line.unit(), x, y, fade(DIM, alpha), false);
+            graphics.text(font, line.text(), x + unitWidth, y, fade(tone(line.tone()), alpha), false);
+            y += 10;
+            shown++;
+        }
+        if (shown < lines.size() && (now / 300) % 2 == 0) {
+            graphics.fill(x, y + 1, x + 5, y + 8, fade(CYAN, alpha));
+        }
+
+        // Wide screens put the logo to the right of the log; narrow ones below it.
+        boolean wide = width >= 520;
+        int logoX = wide ? width * 2 / 3 : width / 2;
+        int logoY = wide ? height * 2 / 5 : height * 3 / 5;
+        if (boot >= BOOT_LOGO) {
+            float logo = Math.min(alpha, Math.clamp((boot - BOOT_LOGO) / 0.08f, 0f, 1f));
+            graphics.pose().pushMatrix();
+            graphics.pose().translate(logoX, logoY - 4 * LOGO_SCALE);
+            graphics.pose().scale(LOGO_SCALE, LOGO_SCALE);
+            graphics.text(font, "EDGE", -(font.width("EDGE") - 1) / 2, 0, fade(TEXT, logo), false);
+            graphics.pose().popMatrix();
+
+            String subtitle = "GATEWAY OPERATING SYSTEM";
+            graphics.text(font, subtitle, logoX - font.width(subtitle) / 2, logoY + 30, fade(DIM, logo), false);
+            int cells = 24;
+            int cellsX = logoX - cells * 7 / 2;
+            int lit = Math.round(boot * cells);
+            for (int i = 0; i < cells; i++) {
+                graphics.fill(cellsX + i * 7, logoY + 43, cellsX + i * 7 + 5, logoY + 49, fade(i < lit ? CYAN : CELL_OFF, logo));
+            }
+            boolean online = boot >= BOOT_CLEAR;
+            String status = online ? "all systems online" : event.reason().equals(HudBoot.STARTUP) ? "starting" : "rebooting · " + event.reason();
+            graphics.text(font, status, logoX - font.width(status) / 2, logoY + 55, fade(online ? CYAN : DIM, logo), false);
+        }
+
+        String footer = event.reason().equals(HudBoot.STARTUP) ? "STARTING UP" : "REBOOTING · " + event.reason().toUpperCase(Locale.ROOT);
+        graphics.text(font, footer, (width - font.width(footer)) / 2, height - 14, fade(GREY, alpha), false);
+    }
+
+    private static int tone(HudBoot.Tone tone) {
+        return switch (tone) {
+            case PLAIN -> TEXT;
+            case OK -> CYAN;
+            case FLAW -> MAGENTA;
+            case WARN -> ORANGE;
+        };
     }
 
     // endregion

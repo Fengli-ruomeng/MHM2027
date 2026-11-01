@@ -25,6 +25,7 @@ import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.gateway.Sockets;
 import com.mhm.mhm2027.hud.Hud;
+import com.mhm.mhm2027.hud.HudBoot;
 import com.mhm.mhm2027.hud.HudEvent;
 
 import net.minecraft.core.Holder;
@@ -433,6 +434,60 @@ public final class Terminal {
         lockReason = reason;
         Sessions.endAllOn(owner, reason);
         Sessions.endAllBy(owner, reason);
+        // The boot screen runs for exactly as long as the gateway is down.
+        withPlayer(player -> Hud.boot(player, reason, ticks, bootLog(player, reason)));
+    }
+
+    /** The boot log the client shows while the gateway comes back up: this gateway's real state. */
+    public List<HudBoot.Line> bootLog(ServerPlayer player, String reason) {
+        GatewayData data = data(player);
+        GatewayTier tier = data.tier();
+        List<HudBoot.Line> lines = new ArrayList<>();
+        lines.add(bootLine("gateway", tier.label() + " " + tier.band() + " · " + GatewayData.formatMb(tier.ramMb()) + " RAM · "
+                + tier.tops() + " TOPS", HudBoot.Tone.PLAIN));
+        lines.add(bootLine("buffer", GatewayData.formatMb(data.bufferMb()) + " / " + GatewayData.formatMb(tier.bufferMb()) + " .... ok",
+                HudBoot.Tone.OK));
+        lines.add(bootLine("net", "address " + Addresses.of(owner), HudBoot.Tone.PLAIN));
+        lines.add(bootLine("storage", ScriptStore.list(server, owner).size() + " files .... ok", HudBoot.Tone.OK));
+        List<String> presets = player.getData(ModAttachments.PRESETS).ids().stream().map(Identifier::getPath).toList();
+        lines.add(bootLine("presets", presets.isEmpty() ? "none" : String.join(" ", presets), HudBoot.Tone.PLAIN));
+        Sockets sockets = sockets(player);
+        List<String> socketed = new ArrayList<>();
+        for (int i = 0; i < sockets.standard().size(); i++) {
+            if (!sockets.standard().get(i).isEmpty()) {
+                socketed.add("S" + (i + 1) + " " + socketName(sockets.standard().get(i)));
+            }
+        }
+        for (int i = 0; i < sockets.overload().size(); i++) {
+            if (!sockets.overload().get(i).isEmpty()) {
+                socketed.add("O" + (i + 1) + " " + socketName(sockets.overload().get(i)));
+            }
+        }
+        lines.add(bootLine("sockets", socketed.isEmpty() ? "empty" : String.join(" · ", socketed), HudBoot.Tone.PLAIN));
+        KernelSettings settings = kernel.settings();
+        lines.add(bootLine("kernel", kernel.name() + " · " + settings.schedule() + " " + settings.gc() + " verify=" + settings.verify()
+                + " rate_limit=" + settings.rateLimit(), HudBoot.Tone.PLAIN));
+        for (FlawRules.Hit hit : flaws.active()) {
+            if (!hit.dynamic()) {
+                lines.add(bootLine("", "flaw " + hit.className() + " " + hit.severity().id(),
+                        hit.severity().rank() >= 2 ? HudBoot.Tone.FLAW : HudBoot.Tone.WARN));
+            }
+        }
+        List<String> hooks = kernel.hookNames();
+        lines.add(bootLine("hooks", (hooks.isEmpty() ? "defaults" : String.join(" ", hooks)) + " .... ok", HudBoot.Tone.OK));
+        if (!reason.equals(HudBoot.STARTUP)) {
+            lines.add(bootLine("reboot", reason, HudBoot.Tone.WARN));
+        }
+        lines.add(bootLine("edge", "starting", HudBoot.Tone.PLAIN));
+        return lines;
+    }
+
+    private static HudBoot.Line bootLine(String unit, String text, HudBoot.Tone tone) {
+        return new HudBoot.Line(unit, text, tone);
+    }
+
+    private static String socketName(String id) {
+        return PresetRegistry.byTerminalId(id).map(preset -> preset.summary().name()).orElse(id);
     }
 
     // endregion

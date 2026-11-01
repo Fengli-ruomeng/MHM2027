@@ -1,6 +1,7 @@
 package com.mhm.mhm2027.client;
 
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.hud.HudBoot;
 import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.hud.HudState;
 import com.mhm.mhm2027.network.EditorCheck;
@@ -27,6 +28,7 @@ public final class PanelNetworking {
         event.register(EditorCheck.TYPE, (check, context) -> EditorState.accept(check));
         event.register(HudEvent.TYPE, (hudEvent, context) -> HudFeed.accept(hudEvent));
         event.register(HudState.TYPE, (state, context) -> HudFeed.accept(state));
+        event.register(HudBoot.TYPE, (boot, context) -> HudFeed.accept(boot));
     }
 
     /** Don't show one world's terminal in the next. */

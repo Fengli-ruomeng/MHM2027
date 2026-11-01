@@ -5,6 +5,7 @@ import java.util.Deque;
 
 import org.jspecify.annotations.Nullable;
 
+import com.mhm.mhm2027.hud.HudBoot;
 import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.hud.HudState;
 import com.mhm.mhm2027.station.FlashStationBlockEntity;
@@ -29,6 +30,9 @@ public final class HudFeed {
     private static long stateAt;
     private static float glitchLevel;
     private static long glitchAt;
+    private static @Nullable HudBoot boot;
+    private static long bootStart;
+    private static long bootEnd;
 
     private HudFeed() {
     }
@@ -53,6 +57,27 @@ public final class HudFeed {
     static void accept(HudState next) {
         state = next;
         stateAt = Util.getMillis();
+    }
+
+    /** The gateway is booting: the boot screen runs for as long as the server said, and starts with a glitch. */
+    static void accept(HudBoot next) {
+        long now = Util.getMillis();
+        boot = next;
+        bootStart = now;
+        bootEnd = now + Math.max(20, next.ticks()) * 50L;
+        glitch(1f);
+    }
+
+    /** How far the boot has got, 0 to 1; -1 when the gateway isn't booting. */
+    static float boot(long now) {
+        if (boot == null || now >= bootEnd) {
+            return -1;
+        }
+        return (now - bootStart) / (float) (bootEnd - bootStart);
+    }
+
+    static @Nullable HudBoot bootEvent() {
+        return boot;
     }
 
     static EventStack<HudEvent> cards() {
@@ -97,6 +122,7 @@ public final class HudFeed {
         banner = null;
         state = HudState.EMPTY;
         glitchLevel = 0;
+        boot = null;
     }
 
     /** Attacks stay longest; background noise goes first. */

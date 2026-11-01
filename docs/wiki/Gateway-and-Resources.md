@@ -79,6 +79,8 @@ Above **70 Heat** you have the `thermal` flaw, so attackers get in faster. At 10
 
 While your gateway is down, nothing runs, every session on you or by you ends, and **nobody can break into you**. A reboot is a real escape, but it stops everything you had running.
 
+You also **watch it boot**. For the whole downtime the boot screen covers your view: your gateway's boot log, then the Edge logo. You can't skip it, even mid-fight, and the HUD only comes back, piece by piece, as the boot finishes. Joining a world plays a short boot too.
+
 ## Death
 
 When you die, your programs stop and every session ends. You keep your level, your kernel, your storage, your written presets and your sockets.
