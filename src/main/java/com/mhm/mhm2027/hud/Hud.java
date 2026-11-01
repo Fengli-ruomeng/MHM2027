@@ -65,6 +65,11 @@ public final class Hud {
      * @param ticks how long it stays; 0 for the kind's default
      */
     public static void event(ServerPlayer player, HudEvent.Kind kind, String tag, Component title, Component detail, String key, int ticks) {
+        if (!hasLens(player)) {
+            // Nothing to show a card on, so the action bar has to do.
+            player.sendOverlayMessage(title);
+            return;
+        }
         PacketDistributor.sendToPlayer(player, new HudEvent(kind, tag, title, detail, key, ticks, false));
     }
 
@@ -73,12 +78,20 @@ public final class Hud {
      * flash. Just a headline: anything to read goes on a card beside it.
      */
     public static void banner(ServerPlayer player, HudEvent.Kind kind, Component title) {
+        if (!hasLens(player)) {
+            return;
+        }
         PacketDistributor.sendToPlayer(player, new HudEvent(kind, "", title, Component.empty(), "", 0, true));
     }
 
     /** The gateway is booting: the client plays the boot sequence for {@code ticks}, with this log. */
     public static void boot(ServerPlayer player, String reason, int ticks, List<HudBoot.Line> lines) {
         PacketDistributor.sendToPlayer(player, new HudBoot(reason, ticks, lines));
+    }
+
+    /** A Null gateway has no HUD, and an off one shows only how to switch it on. */
+    private static boolean hasLens(ServerPlayer player) {
+        return !Terminals.isNull(player) && Terminals.existing(player).map(terminal -> !terminal.isOff()).orElse(false);
     }
 
     /** "10.71.4.200 // ACCESS": the source is an entity's address. */
@@ -119,14 +132,11 @@ public final class Hud {
     private static HudState stateOf(ServerPlayer player) {
         GatewayData data = player.getData(ModAttachments.GATEWAY);
         Terminal terminal = Terminals.existing(player).orElse(null);
-        if (terminal == null) {
+        if (terminal == null || data.tier().isNull()) {
+            // A Null gateway has no HUD to send it to.
             return HudState.EMPTY;
         }
         float flash = terminal.flashShare();
-        if (data.tier().isNull()) {
-            // A Null gateway has no sockets and no power to switch, but it can still be flashing Restore Firmware.
-            return flash < 0 ? HudState.EMPTY : new HudState(List.of(), flash, Terminal.Power.ON);
-        }
         Sockets sockets = terminal.sockets(player);
         List<HudState.Slot> slots = new ArrayList<>();
         float heat = (float) (data.heat() / GatewayData.MAX_HEAT);

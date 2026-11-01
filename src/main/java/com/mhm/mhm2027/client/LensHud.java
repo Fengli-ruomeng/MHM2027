@@ -96,6 +96,11 @@ public class LensHud implements GuiLayer {
         if (player == null || minecraft.options.hideGui || minecraft.gui.getDebugOverlay().showDebugScreen()) {
             return;
         }
+        GatewayData data = player.getData(ModAttachments.GATEWAY);
+        if (data.tier().isNull()) {
+            // The Lens is part of the gateway, so a Null player has none.
+            return;
+        }
         long now = Util.getMillis();
         if (player.hurtTime > lastHurtTime) {
             HudFeed.glitch(0.7f);
@@ -107,8 +112,7 @@ public class LensHud implements GuiLayer {
         Font font = minecraft.font;
         int width = graphics.guiWidth();
         int height = graphics.guiHeight();
-        GatewayData data = player.getData(ModAttachments.GATEWAY);
-        if (!data.tier().isNull() && HudFeed.power() == Terminal.Power.OFF) {
+        if (HudFeed.power() == Terminal.Power.OFF) {
             // Off: no HUD at all, just how to switch it on.
             Component hint = Component.translatable("mhm2027.hud.offline", Mhm2027Client.OPEN_PANEL.getTranslatedKeyMessage());
             graphics.text(font, hint, MARGIN, height - 12, GREY, false);
@@ -119,13 +123,11 @@ public class LensHud implements GuiLayer {
         }
         // While booting, the HUD is gone; it comes back piece by piece as the boot finishes.
         float boot = HudFeed.boot(now);
-        if (!data.tier().isNull()) {
-            if (boot < 0 || boot >= BARS_RETURN) {
-                bars(graphics, font, data, height, now, jitter);
-            }
-            if (boot < 0 || boot >= SLOTS_RETURN) {
-                slots(graphics, font, width, height);
-            }
+        if (boot < 0 || boot >= BARS_RETURN) {
+            bars(graphics, font, data, height, now, jitter);
+        }
+        if (boot < 0 || boot >= SLOTS_RETURN) {
+            slots(graphics, font, width, height);
         }
         if (boot < 0 || boot >= CARDS_RETURN) {
             flashCode(graphics, font, width, height, now);
@@ -409,7 +411,7 @@ public class LensHud implements GuiLayer {
      * its own for as long as it lasts.
      */
     private static void banner(GuiGraphicsExtractor graphics, Font font, GatewayData data, int width, int height, long now) {
-        boolean outOfMemory = !data.tier().isNull() && data.isOutOfMemory();
+        boolean outOfMemory = data.isOutOfMemory();
         if (!outOfMemory) {
             outOfMemorySince = 0;
         } else if (outOfMemorySince == 0) {

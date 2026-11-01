@@ -103,7 +103,7 @@ public final class EdgeShell {
                          double buffer, double bufferMax, int heat) {
     }
 
-    public record Data(String user, String address, boolean isNull, boolean atStation, Status status, Kernel kernel,
+    public record Data(String user, String address, boolean atStation, Status status, Kernel kernel,
                        List<Script> scripts, List<Proc> programs, List<Flaw> flaws, List<Socket> sockets, List<String> log) {
     }
 
@@ -132,10 +132,6 @@ public final class EdgeShell {
 
     public void welcome(Data data, long now) {
         printAt = now;
-        if (data.isNull()) {
-            print(Seg.of("This gateway is Null: there's nothing here to run.", DIM));
-            return;
-        }
         print(Seg.of("EDGE ", TEXT), Seg.of(data.status().level() + " " + data.status().band() + " · " + data.address(), DIM));
         print(Seg.of("Type a command, or click one. ", DIM), Seg.run("help", CYAN, "help"), Seg.of(" lists them all.", DIM));
     }
@@ -166,10 +162,6 @@ public final class EdgeShell {
         int space = line.indexOf(' ');
         String command = (space < 0 ? line : line.substring(0, space)).toLowerCase(Locale.ROOT);
         String rest = space < 0 ? "" : line.substring(space + 1).strip();
-        if (data.isNull() && !List.of("help", "clear", "exit").contains(command)) {
-            error("This gateway is Null: there's nothing here to run.");
-            return;
-        }
         switch (command) {
             case "help" -> help();
             case "ls" -> ls(data);

@@ -35,12 +35,11 @@ public class GatewayEvents {
             return;
         }
         GatewayData data = player.getData(ModAttachments.GATEWAY);
-        if (data.tier().isNull()) {
-            return;
+        if (!data.tier().isNull()) {
+            double gcMultiplier = Terminals.existing(player).map(terminal -> terminal.kernel().settings().gcMultiplier()).orElse(1.0);
+            tickBody(player, data, playerGcRate(player) * gcMultiplier);
         }
-        double gcMultiplier = Terminals.existing(player).map(terminal -> terminal.kernel().settings().gcMultiplier()).orElse(1.0);
-        tickBody(player, data, playerGcRate(player) * gcMultiplier);
-
+        // Null gateways sync too, or the client would never see the switch to Null.
         if (player.tickCount % SYNC_INTERVAL_TICKS == 0 && data.consumeDirty()) {
             player.syncData(ModAttachments.GATEWAY);
         }

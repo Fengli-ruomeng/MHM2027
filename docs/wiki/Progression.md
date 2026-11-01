@@ -59,6 +59,7 @@ A **Null** gateway (LV-1):
 
 - is **immune to all hacking**, at every stage;
 - can't run programs or use cyber gear;
+- has **no HUD and no Edge**: G just tells you you're Null, and the mod's messages appear above the hotbar;
 - loses everything written into it: presets, sockets and kernel are wiped.
 
 Gateway mobs still get their physical upgrades, so the game stays harder even for Null players.

@@ -62,6 +62,12 @@ public final class Terminals {
             return;
         }
         if (Terminal.data(player).tier().isNull()) {
+            Terminal flashing = TERMINALS.get(player.getUUID());
+            if (flashing != null && flashing.isFlashing()) {
+                // Restore Firmware is being written: the station needs the terminal until it's done.
+                flashing.tick(player);
+                return;
+            }
             // A Null gateway has no cyber layer: drop whatever was running before the switch.
             Terminal terminal = TERMINALS.remove(player.getUUID());
             if (terminal != null) {

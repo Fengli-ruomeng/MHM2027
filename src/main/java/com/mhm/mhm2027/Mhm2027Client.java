@@ -8,12 +8,14 @@ import com.mhm.mhm2027.client.FlashStationScreen;
 import com.mhm.mhm2027.client.HudFeed;
 import com.mhm.mhm2027.client.LensHud;
 import com.mhm.mhm2027.client.PanelNetworking;
+import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.network.PanelRequest;
 import com.mhm.mhm2027.station.ModBlocks;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -78,6 +80,10 @@ public class Mhm2027Client {
         Minecraft minecraft = Minecraft.getInstance();
         while (OPEN_PANEL.consumeClick()) {
             if (minecraft.screen == null && minecraft.player != null) {
+                if (minecraft.player.getData(ModAttachments.GATEWAY).tier().isNull()) {
+                    minecraft.player.sendOverlayMessage(Component.translatable("mhm2027.null.no_gateway"));
+                    continue;
+                }
                 switch (HudFeed.power()) {
                     case OFF -> {
                         ClientPacketDistributor.sendToServer(PanelRequest.of(PanelRequest.Action.BOOT));

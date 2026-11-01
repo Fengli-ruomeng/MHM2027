@@ -564,18 +564,19 @@ public final class Terminal {
         recoveringTops.removeIf(entry -> --entry[1] <= 0);
         resisting.removeIf(entry -> --entry[1] <= 0);
 
-        if (poweredOff) {
-            // Off: nothing runs, and you feel it.
-            if (now % 20 == 0 && !data(player).tier().isNull()) {
-                player.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 0, true, false, true));
+        // First, since a Null gateway writing Restore Firmware is flashing while off.
+        if (flash != null) {
+            if (now - flashHeldAt > FLASH_HOLD_TICKS) {
+                endFlash(player);
             }
             updateUsage(player);
             refreshFlawsIfDue(player, bodyChanged);
             return;
         }
-        if (flash != null) {
-            if (now - flashHeldAt > FLASH_HOLD_TICKS) {
-                endFlash(player);
+        if (poweredOff) {
+            // Off: nothing runs, and you feel it.
+            if (now % 20 == 0 && !data(player).tier().isNull()) {
+                player.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 0, true, false, true));
             }
             updateUsage(player);
             refreshFlawsIfDue(player, bodyChanged);

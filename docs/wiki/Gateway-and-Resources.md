@@ -73,7 +73,7 @@ Above **70 Heat** you have the `thermal` flaw, so attackers get in faster. At 10
 
 A gateway is **off**, **booting** or **on**.
 
-- **Off**: whenever you join a world or respawn. No HUD, no programs, no kernel, no cyber gear, and Slowness I. Being off is no hiding place: with no kernel to deny or resist, anyone who tries to get in does so at full speed.
+- **Off**: whenever you join a world or respawn. No HUD, no programs, no kernel, no cyber gear, and Slowness I. Being off is no hiding place: with no kernel to deny or resist, anyone who tries to get in does so at full speed. Until you boot, the mod's messages appear above the hotbar.
 - **Booting**: press **G** while off. It takes 3 seconds, and like any reboot, nobody can hack you while it boots. Close the boot screen early and the boot carries on, but you're blind and heavily slowed until it's done.
 - **On**: everything works.
 

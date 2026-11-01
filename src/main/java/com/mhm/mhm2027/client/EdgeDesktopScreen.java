@@ -90,6 +90,11 @@ public class EdgeDesktopScreen extends Screen {
 
     @Override
     public void tick() {
+        if (minecraft.player == null || minecraft.player.getData(ModAttachments.GATEWAY).tier().isNull()) {
+            // Gone Null with Edge open (only an admin can do that): Edge goes with the gateway.
+            onClose();
+            return;
+        }
         if (PanelState.messageSerial() != lastMessage) {
             lastMessage = PanelState.messageSerial();
             shell.message(PanelState.lastMessage().getString(), PanelState.messageSuccess(), Util.getMillis());
@@ -135,20 +140,16 @@ public class EdgeDesktopScreen extends Screen {
         int x = 6;
         x = text(graphics, "EDGE", x, 3, EdgeShell.TEXT) + 10;
         x = text(graphics, data.user() + "@" + data.address(), x, 3, EdgeShell.CYAN) + 10;
-        if (!data.isNull()) {
-            text(graphics, data.status().level() + " · " + data.kernel().name(), x, 3, EdgeShell.DIM);
-        }
+        text(graphics, data.status().level() + " · " + data.kernel().name(), x, 3, EdgeShell.DIM);
         // Right side: the four resources as small cell meters, then the clock.
         String clock = clock();
         int right = width - 6 - font.width(clock);
         text(graphics, clock, right, 3, EdgeShell.DIM);
-        if (!data.isNull()) {
-            EdgeShell.Status status = data.status();
-            right = meter(graphics, "HEAT", status.heat() / 100.0, status.heat() >= 70 ? EdgeShell.ORANGE : EdgeShell.TEXT, right - 12);
-            right = meter(graphics, "TOPS", 1 - (double) status.topsFree() / Math.max(1, status.tops()), EdgeShell.TEXT, right - 10);
-            right = meter(graphics, "RAM", status.ramUsed() / Math.max(1, status.ram()), status.ramUsed() > status.ram() ? EdgeShell.MAGENTA : EdgeShell.TEXT, right - 10);
-            meter(graphics, "BUF", status.buffer() / Math.max(1, status.bufferMax()), EdgeShell.CYAN, right - 10);
-        }
+        EdgeShell.Status status = data.status();
+        right = meter(graphics, "HEAT", status.heat() / 100.0, status.heat() >= 70 ? EdgeShell.ORANGE : EdgeShell.TEXT, right - 12);
+        right = meter(graphics, "TOPS", 1 - (double) status.topsFree() / Math.max(1, status.tops()), EdgeShell.TEXT, right - 10);
+        right = meter(graphics, "RAM", status.ramUsed() / Math.max(1, status.ram()), status.ramUsed() > status.ram() ? EdgeShell.MAGENTA : EdgeShell.TEXT, right - 10);
+        meter(graphics, "BUF", status.buffer() / Math.max(1, status.bufferMax()), EdgeShell.CYAN, right - 10);
     }
 
     /** A label and eight cells, drawn so they end at {@code right}. Returns where they start. */
@@ -480,7 +481,6 @@ public class EdgeDesktopScreen extends Screen {
         return new EdgeShell.Data(
                 player == null ? "?" : player.getName().getString(),
                 player == null ? "" : Addresses.of(player.getUUID()),
-                tier.isNull(),
                 snapshot.atStation(),
                 status,
                 new EdgeShell.Kernel(kernel.id(), kernel.name(), kernel.schedule(), kernel.gc(), kernel.verify(), kernel.rateLimit(),

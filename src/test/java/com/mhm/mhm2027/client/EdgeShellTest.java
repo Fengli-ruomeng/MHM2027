@@ -9,8 +9,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class EdgeShellTest {
-    private static EdgeShell.Data data(boolean isNull) {
-        return new EdgeShell.Data("steve", "10.47.203.9", isNull, true,
+    private static EdgeShell.Data data() {
+        return new EdgeShell.Data("steve", "10.47.203.9", true,
                 new EdgeShell.Status("LV4", "Mid", 412, 768, 36, 64, 100, 8600, 10240, 38),
                 new EdgeShell.Kernel("QuickHands", "QuickHands", "priority", "normal", "skip", 8, List.of("on_panic"), 10, 3),
                 List.of(new EdgeShell.Script("Breach", "Breach", false, false),
@@ -21,10 +21,6 @@ class EdgeShellTest {
                 List.of(new EdgeShell.Flaw("memory", "critical", "verify = skip", false)),
                 List.of(new EdgeShell.Socket(false, "preset:mhm2027:adrenaline_shot", "Adrenaline Shot"), new EdgeShell.Socket(true, "", "")),
                 List.of("[Watcher] started", "[kernel] denied 10.71.4.200", "[Watcher] Low health: 8 HP"));
-    }
-
-    private static EdgeShell.Data data() {
-        return data(false);
     }
 
     @Test
@@ -106,14 +102,6 @@ class EdgeShellTest {
         assertEquals("ps", shell.historyUp(""), "stays at the oldest");
         assertEquals("status", shell.historyDown());
         assertEquals("", shell.historyDown());
-    }
-
-    @Test
-    void aNullGatewayHasNothingToRun() {
-        EdgeShell shell = new EdgeShell();
-        shell.submit("run Breach", data(true), 0);
-        assertTrue(shell.drain().isEmpty());
-        assertTrue(shell.lines().getLast().text().contains("Null"));
     }
 
     @Test
