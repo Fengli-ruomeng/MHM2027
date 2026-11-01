@@ -7,7 +7,6 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
-import com.mhm.mhm2027.Mhm2027Client;
 import com.mhm.mhm2027.editor.CodeDocument;
 import com.mhm.mhm2027.editor.CodeDocument.Pos;
 import com.mhm.mhm2027.editor.Completions;
@@ -209,7 +208,7 @@ public class CodeEditorScreen extends Screen {
 
     @Override
     public void onClose() {
-        afterDiscardCheck(() -> minecraft.setScreen(new EdgePanelScreen(Mhm2027Client.OPEN_PANEL)));
+        afterDiscardCheck(() -> minecraft.setScreen(new EdgeDesktopScreen()));
     }
 
     // endregion

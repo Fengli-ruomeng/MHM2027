@@ -49,7 +49,7 @@ TOPS is computing power. Each program **reserves** the TOPS in its header for as
   - then your kernel's `on_panic` hook decides what starts again.
 - A kernel with `schedule = "priority"` doesn't panic. It crashes your lowest-priority programs until you fit again (see [Kernels and Flaws](Kernels-and-Flaws)).
 
-A program can only run so much code each tick: 20 Lua instructions per tick for each TOPS it reserved. A program that goes over is paused until the next tick, and the panel shows it as "paused".
+A program can only run so much code each tick: 20 Lua instructions per tick for each TOPS it reserved. A program that goes over is paused until the next tick, and `ps` shows it as "paused".
 
 ## Buffer
 
@@ -81,7 +81,7 @@ A gateway is **off**, **booting** or **on**.
 
 | What happens | Downtime | Debuff |
 | --- | --- | --- |
-| You reboot (panel or `sys.reboot`) | 3 s | Slowness, Weakness |
+| You reboot (`reboot` in Edge, or `sys.reboot`) | 3 s | Slowness, Weakness |
 | Kernel panic | 5 s | Slowness, Weakness |
 | Installing a kernel | 10 s | Slowness, Weakness, Hunger, 2 fewer hearts |
 

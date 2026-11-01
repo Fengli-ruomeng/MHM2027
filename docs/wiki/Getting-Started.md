@@ -4,7 +4,7 @@ You join the world with an **LV0 gateway**. It's weak, but it already runs progr
 
 ## 0. Switch it on
 
-Your gateway starts **off** whenever you join a world or respawn. While it's off you have no HUD, no programs and no cyber gear, you're slowed, and anything can hack you without a fight. Press **G** to boot it: the boot screen plays for a few seconds, then the panel opens and the HUD comes back. You can close the boot screen early, but the boot carries on and you're blind and badly slowed until it finishes.
+Your gateway starts **off** whenever you join a world or respawn. While it's off you have no HUD, no programs and no cyber gear, you're slowed, and anything can hack you without a fight. Press **G** to boot it: the boot screen plays for a few seconds, then Edge opens and the HUD comes back. You can close the boot screen early, but the boot carries on and you're blind and badly slowed until it finishes.
 
 ## 1. Read the HUD
 
@@ -37,26 +37,19 @@ Cards fade after a few seconds; attacks stay longest.
 
 The numbers behind all of this are in [Gateway and Resources](Gateway-and-Resources).
 
-## 2. Open the panel
+## 2. Open Edge
 
-Once your gateway is on, **G** opens the panel. It has four tabs:
-
-- **Status**: bars for RAM, TOPS, Buffer and Heat, plus your kernel, sockets and flaws.
-- **Processes**: running programs, your sockets, and the scripts in your storage.
-- **Kernel**: your kernel's settings and flaws, and the kernels you could install.
-- **Log**: what your programs printed, and anything that went wrong.
-
-See [Control Panel](Control-Panel) for every button.
+Once your gateway is on, **G** opens **Edge**, your gateway's operating system: a terminal where you type commands, with clickable output and a taskbar. **Esc** closes it. Type `help` to see every command, or see [The Edge Desktop](Control-Panel).
 
 ## 3. Run your first program
 
-Your storage starts with example scripts. In **Processes**, find **Monitor.lua** and press **Run**. It warns you when your health gets low. Open the **Log** tab to see it start.
+Your storage starts with example scripts. Type `ls` to see them, then `run Monitor` (or click **Monitor.lua** in the `ls` output and press Enter). It warns you when your health gets low. `ps` shows it running, and `log Monitor` shows what it has printed.
 
-Try **Status.lua** too: it prints your RAM, TOPS and programs to the log and stops.
+Try `run Status` too: it prints your RAM, TOPS and programs to the log and stops.
 
 ## 4. Write your own
 
-Press **Code editor** in the Processes tab and create a file. A program is a header plus the events it answers:
+Type `edit Hello` to create a file in the code editor. A program is a header plus the events it answers:
 
 ```lua
 program { name = "Hello", type = "resident", tops = 2 }
@@ -74,7 +67,7 @@ function on_timer()
 end
 ```
 
-The editor checks your code as you type and shows what it will cost. Save with **Ctrl+S**, then run it from the Processes tab. [Scripting](Scripting) explains everything in this example.
+The editor checks your code as you type and shows what it will cost. Save with **Ctrl+S**, press **Esc** to go back to Edge, then `run Hello`. [Scripting](Scripting) explains everything in this example.
 
 ## 5. Things that will catch you out
 

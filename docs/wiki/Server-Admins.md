@@ -32,7 +32,7 @@ Balance settings are per world, in `<world>/serverconfig/mhm2027-server.toml`. I
 
 ## Commands
 
-`/edge` is for operators (permission level 2). Players use the panel instead.
+`/edge` is for operators (permission level 2). Players use Edge instead.
 
 | Command | Does |
 | --- | --- |
@@ -86,7 +86,7 @@ Each file is one flaw class and its rules. If several rules match, the highest s
 ```
 
 - A rule reads a kernel **setting** (`verify`, `gc`, `schedule`, `rate_limit`) or a live **state** (`heat`, `programs`, `enhancements`, `hooks_spare`), with `equals`, `at_least` or `at_most`. `all` combines conditions.
-- `near` makes the panel warn players when they're close.
+- `near` makes `flaws` warn players when they're close.
 - Severities are `minor`, `major` and `critical`.
 - Classes with `"dynamic": true` are checked a few times a second; the rest only when a kernel is installed.
 

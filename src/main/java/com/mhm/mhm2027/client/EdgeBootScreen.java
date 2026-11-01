@@ -13,7 +13,7 @@ import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 
 /**
  * What G opens while the gateway is off or booting: the boot sequence, full screen. When the
- * boot finishes it becomes the panel. You may close it at any time, but the boot carries on
+ * boot finishes it becomes the Edge desktop. You may close it at any time, but the boot carries on
  * without you watching it, and you're left blind and heavily slowed until it's done.
  */
 public class EdgeBootScreen extends Screen {
@@ -45,7 +45,7 @@ public class EdgeBootScreen extends Screen {
         }
         if (seenBoot || HudFeed.power() == Terminal.Power.ON) {
             finished = true;
-            minecraft.setScreen(new EdgePanelScreen(toggleKey));
+            minecraft.setScreen(new EdgeDesktopScreen());
         } else if (now - openedAt > WAIT_MILLIS) {
             finished = true;
             onClose();

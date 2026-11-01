@@ -648,7 +648,7 @@ public class LensHud implements GuiLayer {
     // endregion
 
     /** A panel with its top-left and bottom-right corners cut, and a one-pixel border. */
-    private static void panel(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int border, int fill) {
+    static void panel(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int border, int fill) {
         chamfer(graphics, x, y, width, height, CUT, border);
         chamfer(graphics, x + 1, y + 1, width - 2, height - 2, CUT, fill);
     }
@@ -662,7 +662,7 @@ public class LensHud implements GuiLayer {
     }
 
     /** The same color at a fraction of its opacity. */
-    private static int fade(int argb, float alpha) {
+    static int fade(int argb, float alpha) {
         int a = Math.round(((argb >>> 24) & 0xFF) * Math.clamp(alpha, 0f, 1f));
         return (a << 24) | (argb & 0xFFFFFF);
     }

@@ -8,7 +8,7 @@ Nothing here is hidden or random. Your weaknesses come from the choices you make
 
 New to the mod? Read these in order:
 
-1. [Getting Started](Getting-Started): your gateway, the HUD, the panel and your first script.
+1. [Getting Started](Getting-Started): your gateway, the HUD, Edge and your first script.
 2. [Gateway and Resources](Gateway-and-Resources): RAM, TOPS, Buffer, Leak and Heat, and what happens when they run out.
 3. [Scripting](Scripting): how programs work, with examples you can copy.
 4. [Cyber Combat](Cyber-Combat): scanning, breaking in, and defending yourself.
@@ -17,7 +17,7 @@ New to the mod? Read these in order:
 
 | Page | What's in it |
 | --- | --- |
-| [Control Panel](Control-Panel) | The G panel, the code editor and the log |
+| [The Edge Desktop](Control-Panel) | Edge, the terminal you open with G: commands, keys and the code editor |
 | [Sockets and Overload](Sockets-and-Overload) | Which programs need a socket, and running code above your level |
 | [Kernels and Flaws](Kernels-and-Flaws) | Your kernel's settings, hooks and the weaknesses they create |
 | [Progression](Progression) | The Flash Station, firmware, Data Shards and the Null route |
@@ -28,7 +28,7 @@ New to the mod? Read these in order:
 
 ## Quick facts
 
-- Press **G** to open the control panel. It's where you run, stop and write programs.
+- Press **G** to boot your gateway and open **Edge**, its terminal. It's where you run, stop and write programs.
 - Your scripts are saved on the server, in your own storage. Only you can edit them.
 - Buffer, your cyber health bar, **never refills by itself**. Only Cyber Potions refill it.
 - Your gateway level is kept when you die.

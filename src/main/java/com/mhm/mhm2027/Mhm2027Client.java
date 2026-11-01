@@ -3,7 +3,7 @@ package com.mhm.mhm2027;
 import org.lwjgl.glfw.GLFW;
 
 import com.mhm.mhm2027.client.EdgeBootScreen;
-import com.mhm.mhm2027.client.EdgePanelScreen;
+import com.mhm.mhm2027.client.EdgeDesktopScreen;
 import com.mhm.mhm2027.client.FlashStationScreen;
 import com.mhm.mhm2027.client.HudFeed;
 import com.mhm.mhm2027.client.LensHud;
@@ -37,7 +37,7 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 public class Mhm2027Client {
     private static final KeyMapping.Category CATEGORY = new KeyMapping.Category(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "edge"));
 
-    /** Opens and closes the gateway control panel. G by default. */
+    /** Boots the gateway when it's off, and opens Edge when it's on. G by default; Esc closes Edge. */
     public static final KeyMapping OPEN_PANEL = new KeyMapping("key.mhm2027.open_panel", KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, CATEGORY);
 
@@ -84,7 +84,7 @@ public class Mhm2027Client {
                         minecraft.setScreen(new EdgeBootScreen(OPEN_PANEL));
                     }
                     case BOOTING -> minecraft.setScreen(new EdgeBootScreen(OPEN_PANEL));
-                    case ON -> minecraft.setScreen(new EdgePanelScreen(OPEN_PANEL));
+                    case ON -> minecraft.setScreen(new EdgeDesktopScreen());
                 }
             }
         }

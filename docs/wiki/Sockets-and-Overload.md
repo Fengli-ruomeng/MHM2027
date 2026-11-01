@@ -8,7 +8,7 @@ A program needs a socket if it uses any body-changing call: `me.speed_boost`, `m
 
 - How many sockets you have depends on your level: 1 at LV0, 2 from LV1, 4 from LV4, 8 at LV10.
 - A socket holds something from your storage: one of your scripts, or a preset you've written into your gateway. It isn't an item, and it isn't lost when you die.
-- You can **only change sockets at a Flash Station**, within 6 blocks. Use the **Socket** and **Remove** buttons in the panel's Processes tab.
+- You can **only change sockets at a Flash Station**, within 6 blocks. In Edge, use `socket add <program>` and `socket rm <program>`; `socket ls` shows them.
 - Away from the station you can still start and stop socketed programs as often as you like.
 - Starting a body-changing program that isn't socketed fails with "put it in a socket at a Flash Station".
 - Removing a running program from its socket stops it.

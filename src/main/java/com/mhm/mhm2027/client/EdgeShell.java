@@ -1,0 +1,564 @@
+package com.mhm.mhm2027.client;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.function.Function;
+
+/**
+ * The Edge terminal's shell: it parses what the player types, prints the answer, and queues
+ * requests for the server (run, stop, socket, ...). It reads a plain {@link Data} snapshot and
+ * knows nothing of the game, so it can be unit-tested; the desktop screen draws it.
+ *
+ * Output lines are runs of colored text. A clickable run either runs its command at once (ps's
+ * [stop]) or puts it in the prompt for the player to confirm (a file name in ls).
+ */
+public final class EdgeShell {
+    public static final int TEXT = 0xFFF2F6FF;
+    public static final int DIM = 0xFFB9C3D6;
+    public static final int GREY = 0xFF5B6478;
+    public static final int CYAN = 0xFF3FE8FF;
+    public static final int ORANGE = 0xFFFFB347;
+    public static final int MAGENTA = 0xFFFF2E7E;
+    public static final int PINK = 0xFFFF6FA6;
+    public static final int GOLD = 0xFFFFC877;
+    public static final int VIOLET = 0xFFB9A4FF;
+
+    private static final int MAX_LINES = 400;
+    private static final int MAX_HISTORY = 50;
+    /** Lines printed together appear one after another, this far apart. */
+    private static final long STAGGER_MILLIS = 25;
+
+    /** The commands, with a line of help each, in the order help lists them. */
+    static final List<String[]> COMMANDS = List.of(
+            new String[]{"ls", "what's in your storage"},
+            new String[]{"run", "<program>  start a program"},
+            new String[]{"stop", "<program>  stop one"},
+            new String[]{"ps", "running programs"},
+            new String[]{"log", "[program]  the terminal log, or one program's lines"},
+            new String[]{"status", "your gateway at a glance"},
+            new String[]{"flaws", "your flaws, and the ones you're close to"},
+            new String[]{"socket", "[ls | add | rm]  sockets (change them at a Flash Station)"},
+            new String[]{"kernel", "[ls | install]  your kernel (install at a Flash Station)"},
+            new String[]{"edit", "<file>  open a script in the editor"},
+            new String[]{"burn", "<file>  copy a script onto a blank chip"},
+            new String[]{"folder", "open your storage folder (singleplayer)"},
+            new String[]{"reboot", "restart the gateway"},
+            new String[]{"clear", "clear the screen"},
+            new String[]{"help", "this list"},
+            new String[]{"exit", "close Edge (or press G)"});
+
+    /** A run of text. With a command it's clickable: it either runs it, or puts it in the prompt. */
+    public record Seg(String text, int color, String command, boolean runs) {
+        static Seg of(String text, int color) {
+            return new Seg(text, color, "", false);
+        }
+
+        static Seg run(String text, int color, String command) {
+            return new Seg(text, color, command, true);
+        }
+
+        static Seg fill(String text, int color, String command) {
+            return new Seg(text, color, command, false);
+        }
+
+        public boolean clickable() {
+            return !command.isEmpty();
+        }
+    }
+
+    /** One line of output, and when it was printed (it types itself in from then). */
+    public record Line(List<Seg> segs, long at) {
+        public String text() {
+            StringBuilder out = new StringBuilder();
+            segs.forEach(seg -> out.append(seg.text()));
+            return out.toString();
+        }
+    }
+
+    /** Something for the screen to do: a panel request by its action name, or EDIT, FOLDER or EXIT. */
+    public record Request(String action, String argument) {
+    }
+
+    // region What the shell reads
+
+    public record Script(String id, String name, boolean kernel, boolean preset) {
+    }
+
+    public record Proc(String id, String name, String type, String state, int ramMb, int tops) {
+    }
+
+    public record Flaw(String className, String severity, String cause, boolean approaching) {
+    }
+
+    public record Socket(boolean overload, String id, String name) {
+    }
+
+    public record Kernel(String id, String name, String schedule, String gc, String verify, int rateLimit, List<String> hooks,
+                         int ramMb, int tops) {
+    }
+
+    public record Status(String level, String band, double ramUsed, double ram, double leak, int topsFree, int tops,
+                         double buffer, double bufferMax, int heat) {
+    }
+
+    public record Data(String user, String address, boolean isNull, boolean atStation, Status status, Kernel kernel,
+                       List<Script> scripts, List<Proc> programs, List<Flaw> flaws, List<Socket> sockets, List<String> log) {
+    }
+
+    // endregion
+
+    private final List<Line> lines = new ArrayList<>();
+    private final List<String> history = new ArrayList<>();
+    private final List<Request> requests = new ArrayList<>();
+    private int historyIndex = -1;
+    private long printAt;
+
+    public List<Line> lines() {
+        return lines;
+    }
+
+    /** The requests queued since the last call. */
+    public List<Request> drain() {
+        List<Request> out = List.copyOf(requests);
+        requests.clear();
+        return out;
+    }
+
+    public static String prompt(Data data) {
+        return data.user() + "@gateway:~$ ";
+    }
+
+    public void welcome(Data data, long now) {
+        printAt = now;
+        if (data.isNull()) {
+            print(Seg.of("This gateway is Null: there's nothing here to run.", DIM));
+            return;
+        }
+        print(Seg.of("EDGE ", TEXT), Seg.of(data.status().level() + " " + data.status().band() + " · " + data.address(), DIM));
+        print(Seg.of("Type a command, or click one. ", DIM), Seg.run("help", CYAN, "help"), Seg.of(" lists them all.", DIM));
+    }
+
+    /** A line from outside the shell, such as the server's answer to a request. */
+    public void message(String text, boolean success, long now) {
+        printAt = Math.max(printAt, now);
+        print(Seg.of(text, success ? CYAN : PINK));
+    }
+
+    // region Running commands
+
+    public void submit(String input, Data data, long now) {
+        printAt = now;
+        String line = input.strip();
+        print(Seg.of(prompt(data), CYAN), Seg.of(line, TEXT));
+        if (line.isEmpty()) {
+            return;
+        }
+        if (history.isEmpty() || !history.getLast().equals(line)) {
+            history.add(line);
+            if (history.size() > MAX_HISTORY) {
+                history.removeFirst();
+            }
+        }
+        historyIndex = -1;
+
+        int space = line.indexOf(' ');
+        String command = (space < 0 ? line : line.substring(0, space)).toLowerCase(Locale.ROOT);
+        String rest = space < 0 ? "" : line.substring(space + 1).strip();
+        if (data.isNull() && !List.of("help", "clear", "exit").contains(command)) {
+            error("This gateway is Null: there's nothing here to run.");
+            return;
+        }
+        switch (command) {
+            case "help" -> help();
+            case "ls" -> ls(data);
+            case "run" -> run(data, rest);
+            case "stop" -> stop(data, rest);
+            case "ps" -> ps(data);
+            case "log" -> log(data, rest);
+            case "status" -> status(data);
+            case "flaws" -> flaws(data);
+            case "socket" -> socket(data, rest);
+            case "kernel" -> kernel(data, rest);
+            case "edit" -> file(data, rest, "edit", "EDIT");
+            case "burn" -> file(data, rest, "burn", "BURN");
+            case "folder" -> requests.add(new Request("FOLDER", ""));
+            case "reboot" -> {
+                requests.add(new Request("REBOOT", ""));
+                print(Seg.of("rebooting...", DIM));
+            }
+            case "clear" -> lines.clear();
+            case "exit" -> requests.add(new Request("EXIT", ""));
+            default -> print(Seg.of("edge: " + command + ": command not found · try ", PINK), Seg.run("help", CYAN, "help"));
+        }
+    }
+
+    private void help() {
+        print(Seg.of("EDGE SHELL", TEXT), Seg.of(" · Tab completes, Up and Down go through history", DIM));
+        for (String[] command : COMMANDS) {
+            print(Seg.fill(pad("  " + command[0], 10), CYAN, command[0] + " "), Seg.of(command[1], DIM));
+        }
+    }
+
+    private void ls(Data data) {
+        List<Seg> programs = new ArrayList<>(List.of(Seg.of(pad("programs", 10), DIM)));
+        List<Seg> kernels = new ArrayList<>(List.of(Seg.of(pad("kernels", 10), DIM), Seg.fill("Baseline", VIOLET, "kernel install Baseline"), Seg.of("  ", TEXT)));
+        List<Seg> presets = new ArrayList<>(List.of(Seg.of(pad("presets", 10), DIM)));
+        for (Script script : data.scripts()) {
+            if (script.kernel()) {
+                kernels.add(Seg.fill(script.name(), VIOLET, "kernel install " + script.name()));
+                kernels.add(Seg.of("  ", TEXT));
+            } else if (script.preset()) {
+                presets.add(Seg.fill(script.name(), GOLD, "run " + script.name()));
+                presets.add(Seg.of("  ", TEXT));
+            } else {
+                programs.add(Seg.fill(script.name() + ".lua", TEXT, "run " + script.name()));
+                programs.add(Seg.of("  ", TEXT));
+            }
+        }
+        print(programs.size() > 1 ? programs : List.of(Seg.of(pad("programs", 10), DIM), Seg.of("none", GREY)));
+        print(kernels);
+        print(presets.size() > 1 ? presets : List.of(Seg.of(pad("presets", 10), DIM), Seg.of("none", GREY)));
+    }
+
+    private void run(Data data, String name) {
+        if (name.isEmpty()) {
+            error("run: which program? Try ls.");
+            return;
+        }
+        Optional<Script> script = find(data.scripts().stream().filter(each -> !each.kernel()).toList(), Script::name, Script::id, name);
+        if (script.isEmpty()) {
+            error("run: no program called " + name + " · try ls");
+            return;
+        }
+        requests.add(new Request("START", script.get().id()));
+        print(Seg.of("starting " + script.get().name() + "...", DIM));
+    }
+
+    private void stop(Data data, String name) {
+        if (name.isEmpty()) {
+            error("stop: which program? Try ps.");
+            return;
+        }
+        Optional<Proc> program = find(data.programs(), Proc::name, Proc::id, name);
+        if (program.isEmpty()) {
+            error("stop: " + name + " isn't running · try ps");
+            return;
+        }
+        requests.add(new Request("STOP", program.get().name()));
+    }
+
+    private void ps(Data data) {
+        if (data.programs().isEmpty()) {
+            print(Seg.of("nothing running · ", GREY), Seg.fill("run", CYAN, "run "), Seg.of(" one", GREY));
+            return;
+        }
+        print(Seg.of(pad("PID", 5) + pad("NAME", 18) + pad("STATE", 13) + pad("TOPS", 6) + pad("RAM", 7), GREY));
+        for (int i = 0; i < data.programs().size(); i++) {
+            Proc program = data.programs().get(i);
+            print(Seg.of(pad(String.valueOf(i + 1), 5), GREY), Seg.of(pad(program.name(), 18), TEXT),
+                    Seg.of(pad(program.state(), 13), stateColor(program.state())), Seg.of(pad(String.valueOf(program.tops()), 6), DIM),
+                    Seg.of(pad(program.ramMb() + "M", 7), DIM),
+                    Seg.run("[log]", CYAN, "log " + program.name()), Seg.of(" ", TEXT), Seg.run("[stop]", PINK, "stop " + program.name()));
+        }
+    }
+
+    private void log(Data data, String name) {
+        List<String> log = data.log();
+        if (!name.isEmpty()) {
+            String prefix = "[" + name.toLowerCase(Locale.ROOT) + "]";
+            log = log.stream().filter(line -> line.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
+        }
+        if (log.isEmpty()) {
+            print(Seg.of(name.isEmpty() ? "the log is empty" : "nothing from " + name + " yet", GREY));
+            return;
+        }
+        for (String line : log) {
+            boolean bad = line.contains("crashed") || line.contains("PANIC") || line.contains("failed") || line.contains("denied");
+            print(Seg.of(line, bad ? PINK : DIM));
+        }
+    }
+
+    private void status(Data data) {
+        Status status = data.status();
+        print(Seg.of(status.level() + " " + status.band(), TEXT), Seg.of(" · kernel ", DIM), Seg.of(data.kernel().name(), VIOLET));
+        print(Seg.of("BUFFER ", DIM), Seg.of(size(status.buffer(), status.bufferMax()), CYAN),
+                Seg.of("   RAM ", DIM), Seg.of(size(status.ramUsed(), status.ram()), status.ramUsed() > status.ram() ? PINK : TEXT),
+                Seg.of(status.leak() >= 1 ? " (leak " + Math.round(status.leak()) + ")" : "", VIOLET),
+                Seg.of("   TOPS ", DIM), Seg.of(status.topsFree() + "/" + status.tops(), status.topsFree() <= 2 ? PINK : TEXT),
+                Seg.of("   HEAT ", DIM), Seg.of(String.valueOf(status.heat()), status.heat() >= 70 ? ORANGE : TEXT));
+        socketLine(data);
+    }
+
+    private void flaws(Data data) {
+        if (data.flaws().isEmpty()) {
+            print(Seg.of("no flaws", GREY));
+            return;
+        }
+        for (Flaw flaw : data.flaws()) {
+            int color = flaw.approaching() ? GREY : flaw.severity().equals("minor") ? ORANGE : PINK;
+            print(Seg.of(pad(flaw.className(), 11), color), Seg.of(pad((flaw.approaching() ? "near " : "") + flaw.severity(), 15), color),
+                    Seg.of(flaw.cause(), DIM));
+        }
+    }
+
+    private void socket(Data data, String rest) {
+        int space = rest.indexOf(' ');
+        String sub = (space < 0 ? rest : rest.substring(0, space)).toLowerCase(Locale.ROOT);
+        String name = space < 0 ? "" : rest.substring(space + 1).strip();
+        switch (sub) {
+            case "", "ls" -> {
+                int standard = 0;
+                int overload = 0;
+                for (Socket socket : data.sockets()) {
+                    String label = socket.overload() ? "O" + ++overload : "S" + ++standard;
+                    if (socket.id().isEmpty()) {
+                        print(Seg.of(pad(label, 4), socket.overload() ? ORANGE : DIM), Seg.of("empty", GREY));
+                    } else {
+                        print(Seg.of(pad(label, 4), socket.overload() ? ORANGE : DIM), Seg.of(pad(socket.name(), 22), TEXT),
+                                Seg.fill("[rm]", PINK, "socket rm " + socket.name()));
+                    }
+                }
+                if (data.sockets().isEmpty()) {
+                    print(Seg.of("no sockets", GREY));
+                }
+                if (!data.atStation()) {
+                    print(Seg.of("change sockets at a Flash Station", GREY));
+                }
+            }
+            case "add" -> {
+                Optional<Script> script = find(data.scripts().stream().filter(each -> !each.kernel()).toList(), Script::name, Script::id, name);
+                if (script.isEmpty()) {
+                    error("socket add: no program called " + name);
+                } else {
+                    requests.add(new Request("SOCKET", script.get().id()));
+                }
+            }
+            case "rm" -> {
+                Optional<Socket> socket = find(data.sockets().stream().filter(each -> !each.id().isEmpty()).toList(), Socket::name, Socket::id, name);
+                if (socket.isEmpty()) {
+                    error("socket rm: nothing called " + name + " is in a socket");
+                } else {
+                    requests.add(new Request("UNSOCKET", socket.get().id()));
+                }
+            }
+            default -> error("socket: use socket ls, socket add <program> or socket rm <program>");
+        }
+    }
+
+    private void kernel(Data data, String rest) {
+        int space = rest.indexOf(' ');
+        String sub = (space < 0 ? rest : rest.substring(0, space)).toLowerCase(Locale.ROOT);
+        String name = space < 0 ? "" : rest.substring(space + 1).strip();
+        Kernel kernel = data.kernel();
+        switch (sub) {
+            case "" -> {
+                print(Seg.of("kernel ", DIM), Seg.of(kernel.name(), VIOLET), Seg.of(" · " + kernel.ramMb() + " MB · " + kernel.tops() + " TOPS", DIM));
+                print(Seg.of("schedule=" + kernel.schedule() + " gc=" + kernel.gc() + " verify=" + kernel.verify() + " rate_limit=" + kernel.rateLimit(), TEXT));
+                print(Seg.of("hooks ", DIM), Seg.of(kernel.hooks().isEmpty() ? "none" : String.join(" ", kernel.hooks()), TEXT));
+            }
+            case "ls" -> {
+                print(Seg.fill("Baseline", VIOLET, "kernel install Baseline"), Seg.of(kernel.id().equals("Baseline") ? "  installed" : "", CYAN));
+                for (Script script : data.scripts()) {
+                    if (script.kernel()) {
+                        print(Seg.fill(script.name(), VIOLET, "kernel install " + script.name()),
+                                Seg.of(script.id().equals(kernel.id()) ? "  installed" : "", CYAN));
+                    }
+                }
+                if (!data.atStation()) {
+                    print(Seg.of("install kernels at a Flash Station", GREY));
+                }
+            }
+            case "install" -> {
+                if (name.equalsIgnoreCase("Baseline")) {
+                    requests.add(new Request("INSTALL_KERNEL", "Baseline"));
+                    return;
+                }
+                Optional<Script> script = find(data.scripts().stream().filter(Script::kernel).toList(), Script::name, Script::id, name);
+                if (script.isEmpty()) {
+                    error("kernel install: no kernel called " + name + " · try kernel ls");
+                } else {
+                    requests.add(new Request("INSTALL_KERNEL", script.get().id()));
+                }
+            }
+            default -> error("kernel: use kernel, kernel ls or kernel install <name>");
+        }
+    }
+
+    /** edit and burn: your own files only; presets are locked. */
+    private void file(Data data, String name, String command, String action) {
+        Optional<Script> script = find(data.scripts().stream().filter(each -> !each.preset()).toList(), Script::name, Script::id, name);
+        if (script.isEmpty()) {
+            error(command + ": no file called " + name + " · try ls");
+            return;
+        }
+        requests.add(new Request(action, script.get().id()));
+    }
+
+    // endregion
+
+    // region Completion and history
+
+    /**
+     * Tab: completes the command or the name being typed. With one match it fills it in; with
+     * several it fills in what they share and prints them.
+     */
+    public String complete(String input, Data data, long now) {
+        printAt = now;
+        int space = input.indexOf(' ');
+        if (space < 0) {
+            List<String> matches = COMMANDS.stream().map(command -> command[0]).filter(command -> command.startsWith(input.toLowerCase(Locale.ROOT))).toList();
+            return completeWith(input, "", input, matches, " ");
+        }
+        String command = input.substring(0, space).toLowerCase(Locale.ROOT);
+        String rest = input.substring(space + 1);
+        String head = input.substring(0, space + 1);
+        List<String> pool = switch (command) {
+            case "run" -> data.scripts().stream().filter(each -> !each.kernel()).map(Script::name).toList();
+            case "stop", "log" -> data.programs().stream().map(Proc::name).toList();
+            case "edit", "burn" -> data.scripts().stream().filter(each -> !each.preset()).map(Script::name).toList();
+            case "socket", "kernel" -> null;
+            default -> List.of();
+        };
+        if (pool == null) {
+            int second = rest.indexOf(' ');
+            if (second < 0) {
+                List<String> subs = command.equals("socket") ? List.of("ls", "add", "rm") : List.of("ls", "install");
+                return completeWith(input, head, rest, subs.stream().filter(sub -> sub.startsWith(rest)).toList(), " ");
+            }
+            String sub = rest.substring(0, second);
+            String name = rest.substring(second + 1);
+            List<String> names = switch (command + " " + sub) {
+                case "socket add" -> data.scripts().stream().filter(each -> !each.kernel()).map(Script::name).toList();
+                case "socket rm" -> data.sockets().stream().filter(each -> !each.id().isEmpty()).map(Socket::name).toList();
+                case "kernel install" -> {
+                    List<String> kernels = new ArrayList<>(List.of("Baseline"));
+                    data.scripts().stream().filter(Script::kernel).map(Script::name).forEach(kernels::add);
+                    yield kernels;
+                }
+                default -> List.of();
+            };
+            return completeWith(input, head + sub + " ", name, startingWith(names, name), "");
+        }
+        return completeWith(input, head, rest, startingWith(pool, rest), "");
+    }
+
+    private String completeWith(String input, String head, String partial, List<String> matches, String after) {
+        if (matches.isEmpty()) {
+            return input;
+        }
+        if (matches.size() == 1) {
+            return head + matches.getFirst() + after;
+        }
+        print(Seg.of(String.join("   ", matches), GREY));
+        String shared = matches.getFirst();
+        for (String match : matches) {
+            int i = 0;
+            while (i < shared.length() && i < match.length() && Character.toLowerCase(shared.charAt(i)) == Character.toLowerCase(match.charAt(i))) {
+                i++;
+            }
+            shared = shared.substring(0, i);
+        }
+        return shared.length() > partial.length() ? head + shared : input;
+    }
+
+    private static List<String> startingWith(List<String> names, String partial) {
+        String lower = partial.toLowerCase(Locale.ROOT);
+        return names.stream().filter(name -> name.toLowerCase(Locale.ROOT).startsWith(lower)).distinct().toList();
+    }
+
+    /** Up: an older command, or the input unchanged when there's none. */
+    public String historyUp(String current) {
+        if (history.isEmpty()) {
+            return current;
+        }
+        historyIndex = historyIndex < 0 ? history.size() - 1 : Math.max(0, historyIndex - 1);
+        return history.get(historyIndex);
+    }
+
+    /** Down: a newer command, or an empty prompt past the newest. */
+    public String historyDown() {
+        if (historyIndex < 0) {
+            return "";
+        }
+        historyIndex++;
+        if (historyIndex >= history.size()) {
+            historyIndex = -1;
+            return "";
+        }
+        return history.get(historyIndex);
+    }
+
+    // endregion
+
+    // region Helpers
+
+    private void error(String text) {
+        print(Seg.of(text, PINK));
+    }
+
+    private void print(Seg... segs) {
+        print(List.of(segs));
+    }
+
+    private void print(List<Seg> segs) {
+        lines.add(new Line(List.copyOf(segs), printAt));
+        printAt += STAGGER_MILLIS;
+        while (lines.size() > MAX_LINES) {
+            lines.removeFirst();
+        }
+    }
+
+    private void socketLine(Data data) {
+        List<Seg> segs = new ArrayList<>(List.of(Seg.of("sockets ", DIM)));
+        int standard = 0;
+        int overload = 0;
+        for (Socket socket : data.sockets()) {
+            String label = socket.overload() ? "O" + ++overload : "S" + ++standard;
+            if (!socket.id().isEmpty()) {
+                segs.add(Seg.of(label + " " + socket.name() + "  ", socket.overload() ? ORANGE : TEXT));
+            }
+        }
+        if (segs.size() == 1) {
+            segs.add(Seg.of("empty", GREY));
+        }
+        print(segs);
+    }
+
+    /** By name or id, ignoring case and a .lua ending. */
+    static <T> Optional<T> find(List<T> items, Function<T, String> name, Function<T, String> id, String query) {
+        String wanted = query.strip().toLowerCase(Locale.ROOT);
+        if (wanted.endsWith(".lua")) {
+            wanted = wanted.substring(0, wanted.length() - 4);
+        }
+        for (T item : items) {
+            if (name.apply(item).toLowerCase(Locale.ROOT).equals(wanted) || id.apply(item).toLowerCase(Locale.ROOT).equals(wanted)) {
+                return Optional.of(item);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static int stateColor(String state) {
+        return switch (state) {
+            case "running" -> TEXT;
+            case "idle", "sleeping" -> DIM;
+            case "scanning", "accessing", "escalating" -> CYAN;
+            default -> state.startsWith("paused") ? ORANGE : DIM;
+        };
+    }
+
+    static String size(double mb, double totalMb) {
+        if (totalMb >= 1024) {
+            return String.format(Locale.ROOT, "%.1f/%.1fG", mb / 1024, totalMb / 1024);
+        }
+        return Math.round(mb) + "/" + Math.round(totalMb);
+    }
+
+    private static String pad(String text, int width) {
+        return text.length() >= width ? text + " " : text + " ".repeat(width - text.length());
+    }
+
+    // endregion
+}

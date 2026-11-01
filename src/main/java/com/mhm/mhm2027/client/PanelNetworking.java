@@ -37,5 +37,6 @@ public final class PanelNetworking {
         PanelState.reset();
         EditorState.reset();
         HudFeed.reset();
+        EdgeDesktopScreen.reset();
     }
 }

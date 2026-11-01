@@ -13,7 +13,7 @@ G G G      G = gold nugget
 
 **Program Chip / Kernel Chip**: code on an item, for trading and loot. Hold use for a moment to write it into your gateway.
 
-- **Your own code** (burned from storage with the panel's **Burn** button): writing copies the file into your storage. The chip is kept, so you can share it as often as you like. The tooltip shows who wrote it, its cost and the APIs it uses.
+- **Your own code** (burned from storage with `burn <file>` in Edge): writing copies the file into your storage. The chip is kept, so you can share it as often as you like. The tooltip shows who wrote it, its cost and the APIs it uses.
 - **Presets** (they shimmer, and the tooltip says "Preset"): locked code from loot or datapacks. Writing one adds it to your gateway, where you can run it but never read it, and **uses up the chip**. A preset needs a gateway level, and its code runs **one level above** that, so a preset can do things you couldn't write yourself yet.
 
 Presets that come with the mod: Adrenaline Shot, Featherfall, Field Medic, the Aegis kernel, and Overclock (an [Overload](Sockets-and-Overload) preset).

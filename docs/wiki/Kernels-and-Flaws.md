@@ -19,7 +19,7 @@ function on_access_request(req)
 end
 ```
 
-Install it from the panel's **Kernel** tab:
+Install it in Edge with `kernel install <name>` (`kernel ls` lists them):
 
 - You must be within 6 blocks of a **Flash Station**, and you can only install once every 60 seconds.
 - Installing stops every program and takes your gateway down for 10 seconds with a debuff, so do it somewhere safe.
@@ -70,7 +70,7 @@ The first three come from your settings and only change when you install a kerne
 ### Seeing your flaws
 
 - On install, the log lists the flaws your new settings create.
-- The **Kernel** tab lists them all, plus the ones you're close to triggering, in grey.
+- `flaws` in Edge lists them all, plus the ones you're close to triggering.
 - The HUD shows any flaw that comes and goes.
 - `sys.flaws()` and `on_flaw_changed(class, severity)` let your programs react.
 - Attackers see the same list with `remote.inspect`.

@@ -14,6 +14,7 @@ public final class PanelState {
     private static Component message = Component.empty();
     private static boolean messageSuccess;
     private static long messageShownAt;
+    private static int messageSerial;
 
     private PanelState() {
     }
@@ -26,6 +27,16 @@ public final class PanelState {
         message = latest.text();
         messageSuccess = latest.success();
         messageShownAt = Util.getMillis();
+        messageSerial++;
+    }
+
+    /** Goes up by one with every message, so a screen can tell when a new one has arrived. */
+    static int messageSerial() {
+        return messageSerial;
+    }
+
+    static Component lastMessage() {
+        return message;
     }
 
     static void reset() {

@@ -14,7 +14,7 @@ program { name = "Guard", type = "resident", tops = 4 }
 
 | Field | Meaning |
 | --- | --- |
-| `name` | What the panel and the log call it |
+| `name` | What Edge and the log call it |
 | `type` | `resident`, `transient` or `query` (below) |
 | `tops` | TOPS it reserves while it runs. More TOPS means it can run more code per tick |
 | `priority` | 1 to 9, default 5. Only matters under a `priority` kernel: higher runs first and is cut last |

@@ -3,7 +3,7 @@
 **Playing**
 - [Getting Started](Getting-Started)
 - [Gateway and Resources](Gateway-and-Resources)
-- [Control Panel](Control-Panel)
+- [The Edge Desktop](Control-Panel)
 - [Progression](Progression)
 - [Items](Items)
 - [Wired Mobs](Wired-Mobs)
