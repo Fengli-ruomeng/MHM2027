@@ -2,6 +2,10 @@
 
 You join the world with an **LV0 gateway**. It's weak, but it already runs programs.
 
+## 0. Switch it on
+
+Your gateway starts **off** whenever you join a world or respawn. While it's off you have no HUD, no programs and no cyber gear, you're slowed, and anything can hack you without a fight. Press **G** to boot it: the boot screen plays for a few seconds, then the panel opens and the HUD comes back. You can close the boot screen early, but the boot carries on and you're blind and badly slowed until it finishes.
+
 ## 1. Read the HUD
 
 Edge draws its own HUD, the **Lens**.
@@ -35,7 +39,7 @@ The numbers behind all of this are in [Gateway and Resources](Gateway-and-Resour
 
 ## 2. Open the panel
 
-Press **G**. The panel has four tabs:
+Once your gateway is on, **G** opens the panel. It has four tabs:
 
 - **Status**: bars for RAM, TOPS, Buffer and Heat, plus your kernel, sockets and flaws.
 - **Processes**: running programs, your sockets, and the scripts in your storage.

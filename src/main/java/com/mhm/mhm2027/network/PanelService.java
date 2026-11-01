@@ -9,6 +9,7 @@ import java.util.UUID;
 import com.mhm.mhm2027.Mhm2027;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.gateway.Sockets;
+import com.mhm.mhm2027.hud.Hud;
 import com.mhm.mhm2027.item.ChipActions;
 import com.mhm.mhm2027.station.FlashStationBlock;
 import com.mhm.mhm2027.terminal.FlawRules;
@@ -70,8 +71,21 @@ public final class PanelService {
         }
 
         Terminal terminal = Terminals.get(player);
+        if (request.action() == PanelRequest.Action.BOOT) {
+            if (!Terminals.isNull(player) && terminal.bootFromOff()) {
+                Hud.pushState(player);
+            }
+            return;
+        }
+        if (request.action() == PanelRequest.Action.LOOK_AWAY) {
+            terminal.lookedAway(player);
+            return;
+        }
         String name = request.argument();
         try {
+            if (!Terminals.isNull(player)) {
+                terminal.requireOn();
+            }
             Component result = switch (request.action()) {
                 case START -> {
                     Program program = terminal.start(name);

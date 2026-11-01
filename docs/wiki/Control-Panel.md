@@ -1,6 +1,6 @@
 # Control Panel
 
-Press **G** (change it under Controls) to open the panel; press it again to close it. The game keeps running while it's open, so your programs do too.
+Press **G** (change it under Controls) to open the panel; press it again to close it. The game keeps running while it's open, so your programs do too. If your gateway is off, G boots it first, and the panel opens when the boot finishes (see [Gateway and Resources](Gateway-and-Resources#power)).
 
 ## Status
 

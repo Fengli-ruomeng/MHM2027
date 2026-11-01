@@ -35,6 +35,10 @@ public abstract class KuyozItem extends Item {
             Hud.event(player, HudEvent.Kind.WARN, "KUYOZ // NULL", Component.translatable("message.mhm2027.kuyoz.null"));
             return false;
         }
+        if (Terminals.get(player).isOff()) {
+            Hud.event(player, HudEvent.Kind.WARN, "KUYOZ // OFFLINE", Component.translatable("message.mhm2027.kuyoz.off"));
+            return false;
+        }
         return true;
     }
 }

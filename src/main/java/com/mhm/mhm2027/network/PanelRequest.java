@@ -27,7 +27,11 @@ public record PanelRequest(Action action, String argument) implements CustomPack
         /** Put a storage entry in a socket; only at a Flash Station. */
         SOCKET,
         /** Take a storage entry out of its socket; only at a Flash Station. */
-        UNSOCKET
+        UNSOCKET,
+        /** G on an off gateway: boot it. */
+        BOOT,
+        /** The boot screen was closed before the boot finished. */
+        LOOK_AWAY
     }
 
     public static final Type<PanelRequest> TYPE = new Type<>(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "panel_request"));

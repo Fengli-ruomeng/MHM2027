@@ -2,10 +2,13 @@ package com.mhm.mhm2027;
 
 import org.lwjgl.glfw.GLFW;
 
+import com.mhm.mhm2027.client.EdgeBootScreen;
 import com.mhm.mhm2027.client.EdgePanelScreen;
 import com.mhm.mhm2027.client.FlashStationScreen;
+import com.mhm.mhm2027.client.HudFeed;
 import com.mhm.mhm2027.client.LensHud;
 import com.mhm.mhm2027.client.PanelNetworking;
+import com.mhm.mhm2027.network.PanelRequest;
 import com.mhm.mhm2027.station.ModBlocks;
 import com.mojang.blaze3d.platform.InputConstants;
 
@@ -24,6 +27,7 @@ import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.client.network.event.RegisterClientPayloadHandlersEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 
@@ -74,7 +78,14 @@ public class Mhm2027Client {
         Minecraft minecraft = Minecraft.getInstance();
         while (OPEN_PANEL.consumeClick()) {
             if (minecraft.screen == null && minecraft.player != null) {
-                minecraft.setScreen(new EdgePanelScreen(OPEN_PANEL));
+                switch (HudFeed.power()) {
+                    case OFF -> {
+                        ClientPacketDistributor.sendToServer(PanelRequest.of(PanelRequest.Action.BOOT));
+                        minecraft.setScreen(new EdgeBootScreen(OPEN_PANEL));
+                    }
+                    case BOOTING -> minecraft.setScreen(new EdgeBootScreen(OPEN_PANEL));
+                    case ON -> minecraft.setScreen(new EdgePanelScreen(OPEN_PANEL));
+                }
             }
         }
     }

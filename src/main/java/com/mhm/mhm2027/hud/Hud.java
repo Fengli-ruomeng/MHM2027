@@ -34,7 +34,6 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 @EventBusSubscriber(modid = Mhm2027.MODID)
 public final class Hud {
     private static final int STATE_INTERVAL_TICKS = 10;
-    private static final int STARTUP_BOOT_TICKS = 60;
     private static final Map<UUID, HudState> LAST_STATE = new HashMap<>();
 
     private Hud() {
@@ -82,14 +81,6 @@ public final class Hud {
         PacketDistributor.sendToPlayer(player, new HudBoot(reason, ticks, lines));
     }
 
-    /** Joining a world boots the gateway too. */
-    @SubscribeEvent
-    static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player && !Terminals.isNull(player)) {
-            boot(player, HudBoot.STARTUP, STARTUP_BOOT_TICKS, Terminals.get(player).bootLog(player, HudBoot.STARTUP));
-        }
-    }
-
     /** "10.71.4.200 // ACCESS": the source is an entity's address. */
     public static String tag(Entity source, String channel) {
         return Addresses.of(source.getUUID()) + " // " + channel;
@@ -106,9 +97,13 @@ public final class Hud {
 
     @SubscribeEvent
     static void onPlayerTick(PlayerTickEvent.Post event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.tickCount % STATE_INTERVAL_TICKS != 0) {
-            return;
+        if (event.getEntity() instanceof ServerPlayer player && player.tickCount % STATE_INTERVAL_TICKS == 0) {
+            pushState(player);
         }
+    }
+
+    /** Sends the HUD state if it changed. Called twice a second, and at once when the power changes. */
+    public static void pushState(ServerPlayer player) {
         HudState state = stateOf(player);
         if (!state.equals(LAST_STATE.get(player.getUUID()))) {
             LAST_STATE.put(player.getUUID(), state);
@@ -129,8 +124,8 @@ public final class Hud {
         }
         float flash = terminal.flashShare();
         if (data.tier().isNull()) {
-            // A Null gateway has no sockets, but it can still be flashing Restore Firmware.
-            return flash < 0 ? HudState.EMPTY : new HudState(List.of(), flash);
+            // A Null gateway has no sockets and no power to switch, but it can still be flashing Restore Firmware.
+            return flash < 0 ? HudState.EMPTY : new HudState(List.of(), flash, Terminal.Power.ON);
         }
         Sockets sockets = terminal.sockets(player);
         List<HudState.Slot> slots = new ArrayList<>();
@@ -141,7 +136,7 @@ public final class Hud {
         for (String id : sockets.overload()) {
             slots.add(slot(terminal, id, true, heat));
         }
-        return new HudState(List.copyOf(slots), flash);
+        return new HudState(List.copyOf(slots), flash, terminal.power());
     }
 
     private static HudState.Slot slot(Terminal terminal, String id, boolean overload, float fill) {

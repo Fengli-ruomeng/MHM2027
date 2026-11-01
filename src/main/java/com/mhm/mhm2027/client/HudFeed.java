@@ -9,6 +9,7 @@ import com.mhm.mhm2027.hud.HudBoot;
 import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.hud.HudState;
 import com.mhm.mhm2027.station.FlashStationBlockEntity;
+import com.mhm.mhm2027.terminal.Terminal;
 
 import net.minecraft.util.Util;
 
@@ -26,7 +27,7 @@ public final class HudFeed {
     private static final EventStack<HudEvent> CARDS = new EventStack<>(MAX_CARDS);
     private static final Deque<HudEvent> BANNERS = new ArrayDeque<>();
     private static @Nullable Banner banner;
-    private static HudState state = HudState.EMPTY;
+    private static HudState state = HudState.OFFLINE;
     private static long stateAt;
     private static float glitchLevel;
     private static long glitchAt;
@@ -88,6 +89,10 @@ public final class HudFeed {
         return state;
     }
 
+    public static Terminal.Power power() {
+        return state.power();
+    }
+
     /** How far a firmware flash has got, moving smoothly between updates; -1 when there is none. */
     static float flash(long now) {
         if (state.flash() < 0) {
@@ -120,7 +125,7 @@ public final class HudFeed {
         CARDS.clear();
         BANNERS.clear();
         banner = null;
-        state = HudState.EMPTY;
+        state = HudState.OFFLINE;
         glitchLevel = 0;
         boot = null;
     }

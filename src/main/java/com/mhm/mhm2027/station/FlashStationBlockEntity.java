@@ -136,6 +136,8 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
             problem = Component.translatable("mhm2027.flash.already_flashing");
         } else if (terminal.isRebooting()) {
             problem = Component.translatable("mhm2027.flash.rebooting");
+        } else if (terminal.isOff() && !Terminals.isNull(player)) {
+            problem = Component.translatable("mhm2027.flash.off");
         } else {
             problem = problem(player, this);
         }

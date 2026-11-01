@@ -12,6 +12,7 @@ import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.hud.HudBoot;
 import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.hud.HudState;
+import com.mhm.mhm2027.terminal.Terminal;
 
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -107,6 +108,15 @@ public class LensHud implements GuiLayer {
         int width = graphics.guiWidth();
         int height = graphics.guiHeight();
         GatewayData data = player.getData(ModAttachments.GATEWAY);
+        if (!data.tier().isNull() && HudFeed.power() == Terminal.Power.OFF) {
+            // Off: no HUD at all, just how to switch it on.
+            Component hint = Component.translatable("mhm2027.hud.offline", Mhm2027Client.OPEN_PANEL.getTranslatedKeyMessage());
+            graphics.text(font, hint, MARGIN, height - 12, GREY, false);
+            if (glitch > 0.02f) {
+                glitchOverlay(graphics, font, width, height, now, glitch);
+            }
+            return;
+        }
         // While booting, the HUD is gone; it comes back piece by piece as the boot finishes.
         float boot = HudFeed.boot(now);
         if (!data.tier().isNull()) {
@@ -124,7 +134,7 @@ public class LensHud implements GuiLayer {
                 banner(graphics, font, data, width, height, now);
             }
         }
-        if (boot >= 0) {
+        if (boot >= 0 && !(minecraft.screen instanceof EdgeBootScreen)) {
             bootScreen(graphics, font, width, height, now, boot);
         }
         if (glitch > 0.02f) {
@@ -531,13 +541,17 @@ public class LensHud implements GuiLayer {
      * the plain white EDGE logo appears, a bar fills, and for the last fifth the screen clears
      * while the HUD comes back. It lasts exactly as long as the reboot, and can't be skipped.
      */
-    private static void bootScreen(GuiGraphicsExtractor graphics, Font font, int width, int height, long now, float boot) {
+    static void bootScreen(GuiGraphicsExtractor graphics, Font font, int width, int height, long now, float boot) {
         HudBoot event = HudFeed.bootEvent();
-        if (event == null) {
-            return;
-        }
         float alpha = boot < BOOT_CLEAR ? 1f : Math.clamp((1f - boot) / (1f - BOOT_CLEAR), 0f, 1f);
         graphics.fill(0, 0, width, height, fade(BOOT_SHADE, alpha));
+        if (event == null || HudFeed.boot(now) < 0) {
+            // Pressed G; the server's answer is on its way.
+            if ((now / 300) % 2 == 0) {
+                graphics.fill(16, 16, 21, 23, CYAN);
+            }
+            return;
+        }
 
         int x = 16;
         int y = 14;

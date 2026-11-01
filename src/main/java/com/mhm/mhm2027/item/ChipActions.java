@@ -36,6 +36,7 @@ public final class ChipActions {
             if (Terminals.isNull(player)) {
                 throw new InstallException("A Null gateway has no storage to write into");
             }
+            Terminals.get(player).requireOn();
             Identifier presetId = stack.get(ModComponents.PRESET.get());
             ScriptCode code = stack.get(ModComponents.SCRIPT_CODE.get());
             Component result;

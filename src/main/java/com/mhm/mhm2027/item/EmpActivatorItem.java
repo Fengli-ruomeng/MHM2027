@@ -73,8 +73,8 @@ public class EmpActivatorItem extends KuyozItem {
                 target -> target.distanceTo(user) <= radius && Gateways.of(target) != null)) {
             if (target instanceof ServerPlayer player) {
                 Terminal terminal = Terminals.get(player);
-                // A gateway mid-flash is already down; there's nothing running to knock out.
-                if (terminal.isFlashing()) {
+                // A gateway mid-flash or switched off is already down; there's nothing running to knock out.
+                if (terminal.isFlashing() || terminal.isOff()) {
                     continue;
                 }
                 terminal.reboot();

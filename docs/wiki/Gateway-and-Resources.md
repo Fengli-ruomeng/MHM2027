@@ -69,6 +69,14 @@ Heat runs from 0 to 100 and cools by 2 a second. Two things raise it:
 
 Above **70 Heat** you have the `thermal` flaw, so attackers get in faster. At 100, every Overload program crashes.
 
+## Power
+
+A gateway is **off**, **booting** or **on**.
+
+- **Off**: whenever you join a world or respawn. No HUD, no programs, no kernel, no cyber gear, and Slowness I. Being off is no hiding place: with no kernel to deny or resist, anyone who tries to get in does so at full speed.
+- **Booting**: press **G** while off. It takes 3 seconds, and like any reboot, nobody can hack you while it boots. Close the boot screen early and the boot carries on, but you're blind and heavily slowed until it's done.
+- **On**: everything works.
+
 ## Reboots and downtime
 
 | What happens | Downtime | Debuff |
@@ -79,8 +87,8 @@ Above **70 Heat** you have the `thermal` flaw, so attackers get in faster. At 10
 
 While your gateway is down, nothing runs, every session on you or by you ends, and **nobody can break into you**. A reboot is a real escape, but it stops everything you had running.
 
-You also **watch it boot**. For the whole downtime the boot screen covers your view: your gateway's boot log, then the Edge logo. You can't skip it, even mid-fight, and the HUD only comes back, piece by piece, as the boot finishes. Joining a world plays a short boot too.
+You also **watch it boot**. For the whole downtime the boot screen covers your view: your gateway's boot log, then the Edge logo. You can't skip it, even mid-fight, and the HUD only comes back, piece by piece, as the boot finishes.
 
 ## Death
 
-When you die, your programs stop and every session ends. You keep your level, your kernel, your storage, your written presets and your sockets.
+When you die, your programs stop and every session ends, and you respawn with the gateway off. You keep your level, your kernel, your storage, your written presets and your sockets.

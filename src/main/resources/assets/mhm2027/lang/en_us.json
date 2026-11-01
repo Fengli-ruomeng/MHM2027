@@ -254,5 +254,9 @@
   "mhm2027.configuration.glitchStrength": "Glitch Strength",
   "mhm2027.configuration.banners": "Warning Banners",
   "mhm2027.configuration.section.mhm2027.client.toml": "Edge Display",
-  "mhm2027.configuration.section.mhm2027.client.toml.title": "Edge Display"
+  "mhm2027.configuration.section.mhm2027.client.toml.title": "Edge Display",
+  "mhm2027.boot.title": "Edge",
+  "mhm2027.hud.offline": "◆ EDGE OFFLINE · %s TO BOOT",
+  "message.mhm2027.kuyoz.off": "Your gateway is off: press G to boot it",
+  "mhm2027.flash.off": "Boot your gateway first: press G"
 }

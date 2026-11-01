@@ -62,6 +62,14 @@ public final class Terminal {
     /** A flash ends by itself if its station stops holding it for this long (unloaded, gone). */
     private static final int FLASH_HOLD_TICKS = 5;
 
+    /** Booting a gateway that was off takes this long. */
+    private static final int BOOT_TICKS = 60;
+
+    /** Off, booting (any lock: a boot, a reboot, a panic, a kernel swap) or on. */
+    public enum Power {
+        OFF, BOOTING, ON
+    }
+
     /** A firmware flash in progress: the Buffer it had, and whether it started out Null. */
     private record Flash(double savedBufferMb, boolean wasNull) {
     }
@@ -86,6 +94,8 @@ public final class Terminal {
     /** Set when the body is replaced, so the next tick rechecks before the usual interval. */
     private boolean recheckFlaws;
     private @Nullable Flash flash;
+    /** A gateway starts off when you join and after you respawn; G boots it. */
+    private boolean poweredOff = true;
     private long flashHeldAt;
     private float flashShare;
     private long kernelReadyAt;
@@ -112,6 +122,7 @@ public final class Terminal {
         if (tier.isNull()) {
             throw new InstallException("A Null gateway can't run programs");
         }
+        requireOn();
         if (flash != null) {
             throw new InstallException("The gateway is flashing firmware");
         }
@@ -198,6 +209,10 @@ public final class Terminal {
 
     /** A voluntary reboot: kicks every program out, with a few seconds of mild debuff. */
     public void reboot() {
+        // An off gateway has nothing to restart.
+        if (poweredOff) {
+            return;
+        }
         stopAllSilently();
         lock("reboot", REBOOT_LOCK_TICKS);
         withPlayer(player -> {
@@ -218,6 +233,7 @@ public final class Terminal {
         if (tier.isNull()) {
             throw new InstallException("A Null gateway has no kernel");
         }
+        requireOn();
         if (flash != null) {
             throw new InstallException("The gateway is flashing firmware");
         }
@@ -241,6 +257,52 @@ public final class Terminal {
         }
         return next;
     }
+
+    /** Throws while the gateway is off: nothing works until it has booted. */
+    public void requireOn() throws InstallException {
+        if (poweredOff) {
+            throw new InstallException("Your gateway is off: press G to boot it");
+        }
+    }
+
+    // endregion
+
+    // region Power
+
+    public Power power() {
+        return poweredOff ? Power.OFF : isRebooting() ? Power.BOOTING : Power.ON;
+    }
+
+    public boolean isOff() {
+        return poweredOff;
+    }
+
+    /** G on an off gateway: it boots, which takes a few seconds, like any reboot. */
+    public boolean bootFromOff() {
+        if (!poweredOff) {
+            return false;
+        }
+        poweredOff = false;
+        lock(HudBoot.STARTUP, BOOT_TICKS);
+        log("kernel", "booting");
+        return true;
+    }
+
+    /**
+     * The player closed the boot screen before the boot finished: the boot carries on, but they
+     * are blind and heavily slowed until it does.
+     */
+    public void lookedAway(ServerPlayer player) {
+        int ticks = (int) Math.max(0, lockedUntil - now);
+        if (ticks > 0) {
+            player.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, ticks + 20, 0, false, false, true));
+            player.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, ticks, 3, false, false, true));
+        }
+    }
+
+    // endregion
+
+    // region Kernel swaps
 
     /** Kernels can only be swapped so often. Admin commands skip this check. */
     public void checkKernelCooldown() throws InstallException {
@@ -397,6 +459,8 @@ public final class Terminal {
     /** Death: the body is gone, so programs and timed effects end. The kernel carries over. */
     void onDeath() {
         withPlayer(this::endFlash);
+        // You respawn with the gateway off.
+        poweredOff = true;
         Sessions.endAllOn(owner, "died");
         Sessions.endAllBy(owner, "died");
         stopAllSilently();
@@ -500,6 +564,15 @@ public final class Terminal {
         recoveringTops.removeIf(entry -> --entry[1] <= 0);
         resisting.removeIf(entry -> --entry[1] <= 0);
 
+        if (poweredOff) {
+            // Off: nothing runs, and you feel it.
+            if (now % 20 == 0 && !data(player).tier().isNull()) {
+                player.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 0, true, false, true));
+            }
+            updateUsage(player);
+            refreshFlawsIfDue(player, bodyChanged);
+            return;
+        }
         if (flash != null) {
             if (now - flashHeldAt > FLASH_HOLD_TICKS) {
                 endFlash(player);
@@ -699,7 +772,7 @@ public final class Terminal {
     Access.Decision decideAccess(LivingEntity attacker, String method, int tops, boolean escalate) {
         ServerPlayer self = player();
         // Mid-flash the kernel is down, so nothing decides.
-        if (self == null || flash != null) {
+        if (self == null || flash != null || poweredOff) {
             return Access.Decision.ALLOW;
         }
         Supplier<Varargs> request = () -> accessRequest(attacker, self, method, tops, escalate);
@@ -717,9 +790,9 @@ public final class Terminal {
         return request;
     }
 
-    /** The TOPS this terminal defends an access attempt with: the kernel reserve, or none mid-flash. */
+    /** The TOPS this terminal defends an access attempt with: the kernel reserve, or none mid-flash or while off. */
     int defenceTops() {
-        return flash != null ? 0 : kernel.topsReserve();
+        return flash != null || poweredOff ? 0 : kernel.topsReserve();
     }
 
     /** Pays Buffer for a defence (deny, closing a session). False if there isn't enough. */
@@ -767,7 +840,7 @@ public final class Terminal {
         Hud.event(self, HudEvent.Kind.ALERT, Hud.tag(attacker, "SESSION"), Component.translatable("mhm2027.hud.session_opened"),
                 Component.empty(), "access:" + address, 0);
         Hud.banner(self, HudEvent.Kind.ALERT, Component.translatable("mhm2027.banner.breach"));
-        if (flash != null) {
+        if (flash != null || poweredOff) {
             return;
         }
         kernel.callHook(this, Kernel.ON_SESSION_OPENED, EntityHandles.of(attacker, self));
