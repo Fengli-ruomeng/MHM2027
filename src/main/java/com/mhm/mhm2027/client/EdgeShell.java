@@ -36,7 +36,7 @@ public final class EdgeShell {
             new String[]{"run", "<program>  start a program"},
             new String[]{"stop", "<program>  stop one"},
             new String[]{"ps", "running programs"},
-            new String[]{"log", "[program]  the terminal log, or one program's lines"},
+            new String[]{"log", "[program]  open a program's window, or kernel.log"},
             new String[]{"status", "your gateway at a glance"},
             new String[]{"flaws", "your flaws, and the ones you're close to"},
             new String[]{"socket", "[ls | add | rm]  sockets (change them at a Flash Station)"},
@@ -104,7 +104,7 @@ public final class EdgeShell {
     }
 
     public record Data(String user, String address, boolean atStation, Status status, Kernel kernel,
-                       List<Script> scripts, List<Proc> programs, List<Flaw> flaws, List<Socket> sockets, List<String> log) {
+                       List<Script> scripts, List<Proc> programs, List<Flaw> flaws, List<Socket> sockets, List<String> outputs) {
     }
 
     // endregion
@@ -225,7 +225,7 @@ public final class EdgeShell {
             return;
         }
         requests.add(new Request("START", script.get().id()));
-        print(Seg.of("starting " + script.get().name() + "...", DIM));
+        print(Seg.of("starting " + script.get().name() + "... its window opens when it runs", DIM));
     }
 
     private void stop(Data data, String name) {
@@ -256,20 +256,20 @@ public final class EdgeShell {
         }
     }
 
+    /** Opens kernel.log, or the window of a program that has printed something. */
     private void log(Data data, String name) {
-        List<String> log = data.log();
-        if (!name.isEmpty()) {
-            String prefix = "[" + name.toLowerCase(Locale.ROOT) + "]";
-            log = log.stream().filter(line -> line.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
-        }
-        if (log.isEmpty()) {
-            print(Seg.of(name.isEmpty() ? "the log is empty" : "nothing from " + name + " yet", GREY));
+        if (name.isEmpty()) {
+            requests.add(new Request("WINDOW", EdgeWindows.KERNEL));
+            print(Seg.of("opened " + EdgeWindows.KERNEL, DIM));
             return;
         }
-        for (String line : log) {
-            boolean bad = line.contains("crashed") || line.contains("PANIC") || line.contains("failed") || line.contains("denied");
-            print(Seg.of(line, bad ? PINK : DIM));
+        Optional<String> output = find(data.outputs(), each -> each, each -> each, name);
+        if (output.isEmpty()) {
+            error("log: nothing from " + name + " yet · try ps");
+            return;
         }
+        requests.add(new Request("WINDOW", output.get()));
+        print(Seg.of("opened " + output.get(), DIM));
     }
 
     private void status(Data data) {
@@ -408,7 +408,8 @@ public final class EdgeShell {
         String head = input.substring(0, space + 1);
         List<String> pool = switch (command) {
             case "run" -> data.scripts().stream().filter(each -> !each.kernel()).map(Script::name).toList();
-            case "stop", "log" -> data.programs().stream().map(Proc::name).toList();
+            case "stop" -> data.programs().stream().map(Proc::name).toList();
+            case "log" -> data.outputs();
             case "edit", "burn" -> data.scripts().stream().filter(each -> !each.preset()).map(Script::name).toList();
             case "socket", "kernel" -> null;
             default -> List.of();

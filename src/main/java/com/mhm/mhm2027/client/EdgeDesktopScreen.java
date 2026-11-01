@@ -2,9 +2,16 @@ package com.mhm.mhm2027.client;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.stream.Collectors;
 
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
 import com.mhm.mhm2027.gateway.GatewayData;
@@ -14,6 +21,7 @@ import com.mhm.mhm2027.hud.HudState;
 import com.mhm.mhm2027.network.PanelRequest;
 import com.mhm.mhm2027.network.PanelSnapshot;
 import com.mhm.mhm2027.terminal.Addresses;
+import com.mhm.mhm2027.terminal.ProgramOutputs;
 import com.mhm.mhm2027.terminal.ScriptStore;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -30,32 +38,49 @@ import net.minecraft.util.Util;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 
 /**
- * Edge, the gateway's operating system: a top bar, a terminal and a taskbar. Everything the old
- * panel did is a command now, and the output is clickable. The shell keeps its history and
- * output for the session, so reopening Edge picks up where you left off.
+ * Edge, the gateway's operating system: a top bar, windows and a taskbar. The terminal takes
+ * commands; every program gets a window with its own output, and kernel.log one for the
+ * kernel. Windows move by their title bar, resize from the corner and minimise to the taskbar.
+ * The shell and the windows outlive the screen for the session, so reopening Edge picks up
+ * where you left off.
  *
  * Drawn immediate-mode, like the rest of the HUD: clicks are matched against the regions
- * drawn in the last frame.
+ * drawn in the last frame, topmost first.
  */
 public class EdgeDesktopScreen extends Screen {
     private static final int BACKGROUND = 0xF0090D14;
     private static final int BAR = 0xFF0B0F17;
     private static final int RULE = 0xFF2C3550;
     private static final int TITLE_BAR = 0xFF10263A;
+    private static final int TITLE_BAR_DIM = 0xFF121826;
+    private static final int WINDOW_FILL = 0xF20B0F17;
+    private static final int UNFOCUSED = 0xFF3A4254;
     private static final int HOVER = 0x26FFFFFF;
     private static final int LINE_HEIGHT = 10;
     /** Output types itself in at this many milliseconds per character. */
     private static final long TYPE_MILLIS = 3;
+    /** How long a program started from Edge has to show up before its window stops waiting. */
+    private static final long PENDING_MILLIS = 5000;
     private static final List<String> CHIPS = List.of("help", "ls", "ps", "status", "socket ls", "flaws");
 
-    /** The shell outlives the screen for the session: history and output stay. */
+    /** The shell and the windows outlive the screen for the session. */
     private static EdgeShell shell = new EdgeShell();
+    private static EdgeWindows windows = new EdgeWindows();
+    /** Programs just started from Edge, by id: each window opens once the server shows the new run. */
+    private static final Map<String, Pending> pending = new HashMap<>();
+    /** How far each program window has typed its output, by program name. */
+    private static final Map<String, Typing> typing = new HashMap<>();
 
     private final List<Hit> hits = new ArrayList<>();
+    private List<Pill> pills = List.of();
     private String input = "";
     private int cursor;
-    private int scroll;
     private int lastMessage;
+    private int firstSnapshot;
+    private @Nullable Drag drag;
+    private double clickX;
+    private double clickY;
+    private boolean doubleClick;
 
     public EdgeDesktopScreen() {
         super(Component.translatable("mhm2027.desktop.title"));
@@ -64,6 +89,9 @@ public class EdgeDesktopScreen extends Screen {
     /** A new world, a new session. */
     static void reset() {
         shell = new EdgeShell();
+        windows = new EdgeWindows();
+        pending.clear();
+        typing.clear();
     }
 
     @Override
@@ -71,8 +99,17 @@ public class EdgeDesktopScreen extends Screen {
         super.added();
         ClientPacketDistributor.sendToServer(PanelRequest.of(PanelRequest.Action.OPEN));
         lastMessage = PanelState.messageSerial();
+        firstSnapshot = PanelState.snapshotSerial();
         if (shell.lines().isEmpty()) {
             shell.welcome(data(), Util.getMillis());
+        }
+    }
+
+    @Override
+    protected void init() {
+        windows.setArea(desktop());
+        if (windows.get(EdgeWindows.TERMINAL).isEmpty()) {
+            windows.open(EdgeWindows.TERMINAL, Util.getMillis());
         }
     }
 
@@ -95,29 +132,68 @@ public class EdgeDesktopScreen extends Screen {
             onClose();
             return;
         }
+        long now = Util.getMillis();
         if (PanelState.messageSerial() != lastMessage) {
             lastMessage = PanelState.messageSerial();
-            shell.message(PanelState.lastMessage().getString(), PanelState.messageSuccess(), Util.getMillis());
-            scroll = 0;
+            shell.message(PanelState.lastMessage().getString(), PanelState.messageSuccess(), now);
+            scrollTerminalToEnd();
         }
         for (EdgeShell.Request request : shell.drain()) {
-            handle(request);
+            handle(request, now);
         }
+        openStarted(now);
+        closeVanished(now);
     }
 
-    private void handle(EdgeShell.Request request) {
+    private void handle(EdgeShell.Request request, long now) {
         switch (request.action()) {
             case "EDIT" -> minecraft.setScreen(new CodeEditorScreen(request.argument()));
             case "EXIT" -> onClose();
+            case "WINDOW" -> windows.open(request.argument().equals(EdgeWindows.KERNEL) ? EdgeWindows.KERNEL
+                    : EdgeWindows.program(request.argument()), now);
+            case "START" -> start(request.argument(), now);
             case "FOLDER" -> {
                 Path folder = localFolder();
                 if (folder == null) {
-                    shell.message("folder: your storage is on the server; open it in singleplayer", false, Util.getMillis());
+                    shell.message("folder: your storage is on the server; open it in singleplayer", false, now);
                 } else {
                     Util.getPlatform().openPath(folder);
                 }
             }
             default -> ClientPacketDistributor.sendToServer(new PanelRequest(PanelRequest.Action.valueOf(request.action()), request.argument()));
+        }
+    }
+
+    /** Starts a program; its window opens when the server shows the new run. */
+    private void start(String id, long now) {
+        int seen = outputs().stream().filter(output -> output.id().equals(id)).mapToInt(ProgramOutputs.Output::serial).max().orElse(0);
+        pending.put(id, new Pending(seen, now));
+        ClientPacketDistributor.sendToServer(new PanelRequest(PanelRequest.Action.START, id));
+    }
+
+    private void openStarted(long now) {
+        pending.entrySet().removeIf(entry -> {
+            for (ProgramOutputs.Output output : outputs()) {
+                if (output.id().equals(entry.getKey()) && output.serial() > entry.getValue().serial()) {
+                    windows.open(EdgeWindows.program(output.name()), now);
+                    return true;
+                }
+            }
+            return now - entry.getValue().at() > PENDING_MILLIS;
+        });
+    }
+
+    /** A program window whose output the server no longer keeps closes itself. */
+    private void closeVanished(long now) {
+        if (PanelState.snapshotSerial() == firstSnapshot) {
+            // Nothing from the server since Edge opened: what it shows may be stale.
+            return;
+        }
+        Set<String> names = outputs().stream().map(ProgramOutputs.Output::name).collect(Collectors.toSet());
+        for (EdgeWindows.Window window : windows.windows()) {
+            if (EdgeWindows.isProgram(window.id()) && !window.closing() && !names.contains(EdgeWindows.programName(window.id()))) {
+                windows.close(window.id(), now);
+            }
         }
     }
 
@@ -128,13 +204,24 @@ public class EdgeDesktopScreen extends Screen {
         hits.clear();
         long now = Util.getMillis();
         graphics.fill(0, 0, width, height, BACKGROUND);
+        windows.setArea(desktop());
+        windows.prune(now);
         EdgeShell.Data data = data();
-        topBar(graphics, data, now);
-        terminal(graphics, data, mouseX, mouseY, now);
-        taskbar(graphics, data, mouseX, mouseY, now);
+        topBar(graphics, data);
+        pills = pills(data);
+        emptyHint(graphics);
+        for (EdgeWindows.Window window : windows.windows()) {
+            window(graphics, window, data, mouseX, mouseY, now);
+        }
+        taskbar(graphics, mouseX, mouseY, now);
     }
 
-    private void topBar(GuiGraphicsExtractor graphics, EdgeShell.Data data, long now) {
+    /** Between the top bar and the taskbar. */
+    private EdgeWindows.Rect desktop() {
+        return new EdgeWindows.Rect(6, 20, width - 12, height - 42);
+    }
+
+    private void topBar(GuiGraphicsExtractor graphics, EdgeShell.Data data) {
         graphics.fill(0, 0, width, 14, BAR);
         graphics.fill(0, 14, width, 15, RULE);
         int x = 6;
@@ -165,28 +252,111 @@ public class EdgeDesktopScreen extends Screen {
         return labelX;
     }
 
-    private void terminal(GuiGraphicsExtractor graphics, EdgeShell.Data data, int mouseX, int mouseY, long now) {
-        int x0 = 6;
-        int y0 = 20;
-        int x1 = width - 6;
-        int y1 = height - 22;
-        LensHud.panel(graphics, x0, y0, x1 - x0, y1 - y0, EdgeShell.CYAN, 0xFF0B0F17);
-        graphics.fill(x0 + 1, y0 + 4, x1 - 1, y0 + 14, TITLE_BAR);
-        text(graphics, "◆ terminal", x0 + 8, y0 + 5, EdgeShell.CYAN);
-        text(graphics, "— ~", x0 + 12 + font.width("◆ terminal"), y0 + 5, EdgeShell.DIM);
-        button(graphics, "×", x1 - 14, y0 + 4, EdgeShell.PINK, mouseX, mouseY, this::onClose);
+    /** With only the terminal open, a word on where the other windows go. */
+    private void emptyHint(GuiGraphicsExtractor graphics) {
+        if (windows.windows().stream().anyMatch(window -> !window.id().equals(EdgeWindows.TERMINAL) && window.shown())) {
+            return;
+        }
+        EdgeWindows.Rect area = windows.area();
+        int left = windows.get(EdgeWindows.TERMINAL).filter(EdgeWindows.Window::shown).map(window -> windows.bounds(window).right()).orElse(area.x());
+        if (area.right() - left < 120) {
+            return;
+        }
+        int middle = (left + area.right()) / 2;
+        int y = area.y() + area.height() / 2 - 10;
+        centered(graphics, "programs you run open here", middle, y, EdgeShell.GREY);
+        centered(graphics, "log opens kernel.log", middle, y + 12, EdgeShell.GREY);
+    }
 
-        int left = x0 + 8;
-        int right = x1 - 8;
-        int chipsY = y1 - 15;
+    private void window(GuiGraphicsExtractor graphics, EdgeWindows.Window window, EdgeShell.Data data, int mouseX, int mouseY, long now) {
+        EdgeWindows.Rect bounds = windows.bounds(window);
+        int accent = accent(window.id(), data);
+        float progress = EdgeWindows.progress(window, now);
+        if (!window.shown()) {
+            if (progress < 1) {
+                fold(graphics, bounds, pillRect(window.id()), progress, accent);
+            }
+            return;
+        }
+        if (progress < 1) {
+            grow(graphics, pillRect(window.id()), bounds, progress, accent, now);
+            return;
+        }
+        boolean focused = windows.focused().map(top -> top == window).orElse(false);
+        // The window itself catches any click that misses what's on it, so nothing beneath gets it.
+        hits.add(new Hit(bounds.x(), bounds.y(), bounds.width(), bounds.height(), () -> windows.focus(window.id())));
+        LensHud.panel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(), focused ? accent : UNFOCUSED, WINDOW_FILL);
+        if (window.id().equals(EdgeWindows.TERMINAL)) {
+            titleBar(graphics, window, bounds, focused, accent, "terminal", "~", "", 0, mouseX, mouseY);
+            terminal(graphics, window, bounds, data, mouseX, mouseY, now);
+        } else if (window.id().equals(EdgeWindows.KERNEL)) {
+            titleBar(graphics, window, bounds, focused, accent, EdgeWindows.KERNEL, data.kernel().name(), "live", EdgeShell.VIOLET, mouseX, mouseY);
+            kernelLog(graphics, window, bounds);
+        } else {
+            program(graphics, window, bounds, focused, accent, data, mouseX, mouseY, now);
+        }
+        // Resize from the corner.
+        int gripX = bounds.right() - 7;
+        int gripY = bounds.bottom() - 7;
+        graphics.fill(gripX + 4, gripY, gripX + 5, gripY + 5, UNFOCUSED);
+        graphics.fill(gripX, gripY + 4, gripX + 5, gripY + 5, UNFOCUSED);
+        hits.add(new Hit(gripX - 2, gripY - 2, 9, 9, () -> startDrag(window, false)));
+    }
+
+    /** Opening: the window grows out of its taskbar pill, with a short glitch. */
+    private void grow(GuiGraphicsExtractor graphics, EdgeWindows.Rect from, EdgeWindows.Rect to, float t, int accent, long now) {
+        float eased = 1 - (1 - t) * (1 - t);
+        EdgeWindows.Rect rect = from.toward(to, eased);
+        LensHud.panel(graphics, rect.x(), rect.y(), Math.max(10, rect.width()), Math.max(8, rect.height()), accent, WINDOW_FILL);
+        Random random = new Random(now / 40);
+        for (int i = 0; i < 3; i++) {
+            int barY = rect.y() + random.nextInt(Math.max(1, rect.height()));
+            int shift = random.nextInt(9) - 4;
+            graphics.fill(rect.x() + shift, barY, rect.right() + shift, barY + 1, LensHud.fade(accent, 0.55f));
+        }
+    }
+
+    /** Closing or minimising: it folds to its title bar, then slides into the taskbar and fades. */
+    private void fold(GuiGraphicsExtractor graphics, EdgeWindows.Rect from, EdgeWindows.Rect to, float t, int accent) {
+        EdgeWindows.Rect title = new EdgeWindows.Rect(from.x(), from.y(), from.width(), EdgeWindows.TITLE_HEIGHT);
+        EdgeWindows.Rect rect = t < 0.5f ? from.toward(title, t * 2) : title.toward(to, (t - 0.5f) * 2);
+        float alpha = t < 0.5f ? 1 : 1 - (t - 0.5f) * 2;
+        LensHud.panel(graphics, rect.x(), rect.y(), Math.max(10, rect.width()), Math.max(8, rect.height()),
+                LensHud.fade(accent, alpha), LensHud.fade(WINDOW_FILL, alpha));
+    }
+
+    private void titleBar(GuiGraphicsExtractor graphics, EdgeWindows.Window window, EdgeWindows.Rect bounds, boolean focused, int accent,
+                          String title, String sub, String state, int stateColor, int mouseX, int mouseY) {
+        graphics.fill(bounds.x() + 1, bounds.y() + 4, bounds.right() - 1, bounds.y() + 14, focused ? TITLE_BAR : TITLE_BAR_DIM);
+        // Drag by the title bar; a double click maximises.
+        hits.add(new Hit(bounds.x(), bounds.y(), bounds.width(), EdgeWindows.TITLE_HEIGHT + 1, () -> titleClicked(window)));
+        int buttonsX = bounds.right() - 38;
+        graphics.enableScissor(bounds.x() + 2, bounds.y() + 4, buttonsX - 4, bounds.y() + 14);
+        int x = text(graphics, "◆ " + title, bounds.x() + 8, bounds.y() + 5, focused ? accent : EdgeShell.DIM);
+        int subEnd = text(graphics, sub, x + 6, bounds.y() + 5, EdgeShell.GREY);
+        int stateX = buttonsX - 6 - font.width(state);
+        if (!state.isEmpty() && stateX > subEnd + 8) {
+            text(graphics, state, stateX, bounds.y() + 5, stateColor);
+        }
+        graphics.disableScissor();
+        button(graphics, "_", buttonsX, bounds.y() + 4, EdgeShell.DIM, mouseX, mouseY, () -> windows.minimise(window.id(), Util.getMillis()));
+        button(graphics, "□", buttonsX + 12, bounds.y() + 4, EdgeShell.DIM, mouseX, mouseY, () -> windows.toggleMaximise(window.id()));
+        button(graphics, "×", buttonsX + 24, bounds.y() + 4, EdgeShell.PINK, mouseX, mouseY, () -> close(window));
+    }
+
+    private void terminal(GuiGraphicsExtractor graphics, EdgeWindows.Window window, EdgeWindows.Rect bounds, EdgeShell.Data data,
+                          int mouseX, int mouseY, long now) {
+        int left = bounds.x() + 8;
+        int right = bounds.right() - 8;
+        int chipsY = bounds.bottom() - 15;
         int promptY = chipsY - 13;
-        int top = y0 + 19;
+        int top = bounds.y() + 19;
         int visible = Math.max(1, (promptY - 3 - top) / LINE_HEIGHT);
 
         // Output, newest at the bottom; the wheel scrolls back.
         List<EdgeShell.Line> lines = shell.lines().stream().filter(line -> line.at() <= now).toList();
-        scroll = Math.clamp(scroll, 0, Math.max(0, lines.size() - visible));
-        int first = Math.max(0, lines.size() - visible - scroll);
+        window.setScroll(Math.min(window.scroll(), Math.max(0, lines.size() - visible)));
+        int first = Math.max(0, lines.size() - visible - window.scroll());
         graphics.enableScissor(left, top, right, promptY - 2);
         int y = top;
         for (EdgeShell.Line line : lines.subList(first, Math.min(lines.size(), first + visible))) {
@@ -194,8 +364,8 @@ public class EdgeDesktopScreen extends Screen {
             y += LINE_HEIGHT;
         }
         graphics.disableScissor();
-        if (scroll > 0) {
-            String more = "▼ " + scroll + " newer";
+        if (window.scroll() > 0) {
+            String more = "▼ " + window.scroll() + " newer";
             text(graphics, more, right - font.width(more), promptY - 12, EdgeShell.GREY);
         }
 
@@ -211,16 +381,13 @@ public class EdgeDesktopScreen extends Screen {
         }
         graphics.disableScissor();
 
-        // Quick commands, one click each.
+        // Quick commands, one click each, as many as fit.
         int chipX = left;
         for (String chip : CHIPS) {
-            int chipWidth = font.width(chip) + 8;
-            boolean hovered = inside(mouseX, mouseY, chipX, chipsY, chipWidth, 11);
-            graphics.fill(chipX, chipsY, chipX + chipWidth, chipsY + 11, hovered ? 0xFF1C2A3C : 0xFF121826);
-            graphics.fill(chipX, chipsY, chipX + chipWidth, chipsY + 1, RULE);
-            text(graphics, chip, chipX + 4, chipsY + 2, EdgeShell.DIM);
-            hits.add(new Hit(chipX, chipsY, chipWidth, 11, () -> runCommand(chip)));
-            chipX += chipWidth + 4;
+            if (chipX + font.width(chip) + 8 > right) {
+                break;
+            }
+            chipX = chip(graphics, chip, chipX, chipsY, EdgeShell.DIM, mouseX, mouseY, () -> runCommand(chip));
         }
     }
 
@@ -247,28 +414,145 @@ public class EdgeDesktopScreen extends Screen {
         }
     }
 
-    private void taskbar(GuiGraphicsExtractor graphics, EdgeShell.Data data, int mouseX, int mouseY, long now) {
+    /**
+     * A program's window: what it printed, newest at the bottom. Once it ends, a footer says how,
+     * with restart and close (and, for a crash in your own script, the line to fix).
+     */
+    private void program(GuiGraphicsExtractor graphics, EdgeWindows.Window window, EdgeWindows.Rect bounds, boolean focused, int accent,
+                         EdgeShell.Data data, int mouseX, int mouseY, long now) {
+        String name = EdgeWindows.programName(window.id());
+        ProgramOutputs.Output output = output(name);
+        PanelSnapshot.ProgramRow running = running(name);
+        String socket = output == null ? "" : socketLabel(data, output.id());
+        String sub = !socket.isEmpty() ? socket : running != null ? running.type() : "";
+        boolean ended = running == null && output != null && !output.ended().isEmpty();
+        String state = running != null ? running.state() : ended ? output.ended() : "";
+        int stateColor = running != null ? stateColor(running.state()) : output != null && output.ended().equals("crashed") ? EdgeShell.PINK : EdgeShell.GREY;
+        titleBar(graphics, window, bounds, focused, accent, name, sub, state, stateColor, mouseX, mouseY);
+
+        int left = bounds.x() + 8;
+        int right = bounds.right() - 8;
+        boolean overload = socket.startsWith("O") && running != null;
+        int footer = ended ? 24 : overload ? 13 : 0;
+        int top = bounds.y() + 18;
+        int bottom = bounds.bottom() - 5 - footer;
+        int visible = Math.max(1, (bottom - top) / LINE_HEIGHT);
+
+        List<ProgramOutputs.Line> lines = output == null ? List.of() : output.lines();
+        Typing typed = typing.computeIfAbsent(name, key -> new Typing());
+        if (output != null) {
+            typed.update(output, now);
+        }
+        window.setScroll(Math.min(window.scroll(), Math.max(0, lines.size() - visible)));
+        int first = Math.max(0, lines.size() - visible - window.scroll());
+        int base = output == null ? 0 : output.total() - lines.size();
+        long budget = (now - typed.start) / TYPE_MILLIS;
+        graphics.enableScissor(left, top, right, bottom);
+        if (lines.isEmpty()) {
+            text(graphics, output == null ? "waiting for output..." : "nothing printed yet", left, top, EdgeShell.GREY);
+        }
+        int y = top;
+        for (int i = first; i < Math.min(lines.size(), first + visible); i++) {
+            ProgramOutputs.Line line = lines.get(i);
+            String text = line.text();
+            if (base + i >= typed.from) {
+                // New lines type in one after another.
+                long before = 0;
+                for (int j = Math.max(0, typed.from - base); j < i; j++) {
+                    before += lines.get(j).text().length();
+                }
+                long typedSoFar = budget - before;
+                if (typedSoFar <= 0) {
+                    break;
+                }
+                text = text.substring(0, (int) Math.min(typedSoFar, text.length()));
+            }
+            int x = text(graphics, time(line.minute()) + " ", left, y, EdgeShell.GREY);
+            text(graphics, text, x, y, lineColor(line.text()));
+            y += LINE_HEIGHT;
+        }
+        graphics.disableScissor();
+
+        if (ended) {
+            footer(graphics, window, output, left, right, bounds.bottom() - 5 - footer + 2, mouseX, mouseY);
+        } else if (overload) {
+            heatBar(graphics, data, left, right, bounds.bottom() - 5 - footer + 3);
+        }
+    }
+
+    private void footer(GuiGraphicsExtractor graphics, EdgeWindows.Window window, ProgramOutputs.Output output, int left, int right, int y,
+                        int mouseX, int mouseY) {
+        graphics.fill(left - 2, y - 2, right + 2, y - 1, RULE);
+        boolean crashed = output.ended().equals("crashed");
+        String reason = output.errorLine() > 0 ? "line " + output.errorLine() + ": " + output.reason()
+                : output.reason().isEmpty() ? output.ended() : output.ended() + " · " + output.reason();
+        graphics.enableScissor(left, y, right, y + 10);
+        text(graphics, reason, left, y, crashed ? EdgeShell.PINK : EdgeShell.GREY);
+        graphics.disableScissor();
+        int x = chip(graphics, "restart", left, y + 11, EdgeShell.CYAN, mouseX, mouseY, () -> start(output.id(), Util.getMillis()));
+        if (crashed && !output.id().startsWith("preset:")) {
+            String edit = output.errorLine() > 0 ? "edit line " + output.errorLine() : "edit";
+            x = chip(graphics, edit, x, y + 11, EdgeShell.TEXT, mouseX, mouseY,
+                    () -> minecraft.setScreen(new CodeEditorScreen(output.id(), output.errorLine())));
+        }
+        chip(graphics, "close", x, y + 11, EdgeShell.DIM, mouseX, mouseY, () -> windows.close(window.id(), Util.getMillis()));
+    }
+
+    /** An Overload program's window shows the Heat it's building. */
+    private void heatBar(GuiGraphicsExtractor graphics, EdgeShell.Data data, int left, int right, int y) {
+        graphics.fill(left - 2, y - 3, right + 2, y - 2, RULE);
+        int heat = data.status().heat();
+        String label = "Heat " + heat + "/100";
+        int x = text(graphics, label, left, y, heat >= 70 ? EdgeShell.ORANGE : EdgeShell.DIM) + 6;
+        int cells = Math.clamp((right - x) / 4, 0, 20);
+        int lit = Math.round(heat / 100f * cells);
+        for (int i = 0; i < cells; i++) {
+            graphics.fill(x + i * 4, y + 1, x + i * 4 + 3, y + 7, i < lit ? EdgeShell.ORANGE : 0x40F2F6FF);
+        }
+    }
+
+    private void kernelLog(GuiGraphicsExtractor graphics, EdgeWindows.Window window, EdgeWindows.Rect bounds) {
+        int left = bounds.x() + 8;
+        int right = bounds.right() - 8;
+        int top = bounds.y() + 18;
+        int bottom = bounds.bottom() - 5;
+        int visible = Math.max(1, (bottom - top) / LINE_HEIGHT);
+        List<ProgramOutputs.Line> lines = PanelState.snapshot().kernelLog();
+        window.setScroll(Math.min(window.scroll(), Math.max(0, lines.size() - visible)));
+        int first = Math.max(0, lines.size() - visible - window.scroll());
+        graphics.enableScissor(left, top, right, bottom);
+        if (lines.isEmpty()) {
+            text(graphics, "nothing yet", left, top, EdgeShell.GREY);
+        }
+        int y = top;
+        for (ProgramOutputs.Line line : lines.subList(first, Math.min(lines.size(), first + visible))) {
+            int x = text(graphics, time(line.minute()) + " ", left, y, EdgeShell.GREY);
+            text(graphics, line.text(), x, y, kernelColor(line.text()));
+            y += LINE_HEIGHT;
+        }
+        graphics.disableScissor();
+    }
+
+    private void taskbar(GuiGraphicsExtractor graphics, int mouseX, int mouseY, long now) {
         int y = height - 17;
         graphics.fill(0, y - 1, width, y, RULE);
         graphics.fill(0, y, width, height, BAR);
-        int x = 6;
         // The EDGE button: help.
         int edgeWidth = font.width("◆ EDGE") + 10;
-        graphics.fill(x, y + 3, x + edgeWidth, y + 14, EdgeShell.MAGENTA);
-        text(graphics, "◆ EDGE", x + 5, y + 5, 0xFF0B0F17);
-        hits.add(new Hit(x, y + 3, edgeWidth, 11, () -> runCommand("help")));
-        x += edgeWidth + 6;
-        x = pill(graphics, "terminal", EdgeShell.CYAN, true, x, y, mouseX, mouseY, null);
-        for (EdgeShell.Proc program : data.programs()) {
-            int dot = switch (program.state()) {
-                case "idle", "sleeping" -> EdgeShell.GREY;
-                case "scanning", "accessing", "escalating" -> EdgeShell.CYAN;
-                default -> program.state().startsWith("paused") ? EdgeShell.ORANGE : EdgeShell.TEXT;
-            };
-            if (x + font.width(program.name()) + 20 > width / 2 + 60) {
-                break;
-            }
-            x = pill(graphics, program.name(), dot, false, x, y, mouseX, mouseY, "log " + program.name());
+        graphics.fill(6, y + 3, 6 + edgeWidth, y + 14, EdgeShell.MAGENTA);
+        text(graphics, "◆ EDGE", 11, y + 5, 0xFF0B0F17);
+        hits.add(new Hit(6, y + 3, edgeWidth, 11, () -> runCommand("help")));
+
+        String focused = windows.focused().map(EdgeWindows.Window::id).orElse("");
+        for (Pill pill : pills) {
+            boolean active = pill.id().equals(focused);
+            boolean open = windows.get(pill.id()).map(EdgeWindows.Window::shown).orElse(false);
+            boolean hovered = inside(mouseX, mouseY, pill.x(), y + 3, pill.width(), 11);
+            graphics.fill(pill.x(), y + 3, pill.x() + pill.width(), y + 14, active ? EdgeShell.CYAN : RULE);
+            graphics.fill(pill.x() + 1, y + 4, pill.x() + pill.width() - 1, y + 13, active ? TITLE_BAR : hovered ? 0xFF1C2A3C : 0xFF121826);
+            graphics.fill(pill.x() + 4, y + 7, pill.x() + 7, y + 10, pill.dot());
+            text(graphics, pill.label(), pill.x() + 10, y + 5, open ? EdgeShell.TEXT : EdgeShell.DIM);
+            hits.add(new Hit(pill.x(), y + 3, pill.width(), 11, () -> windows.pill(pill.id(), Util.getMillis())));
         }
 
         // Right side: the socket slots, as on the HUD.
@@ -276,8 +560,8 @@ public class EdgeDesktopScreen extends Screen {
         List<HudState.Slot> slots = HudFeed.state().slots();
         for (int i = slots.size() - 1; i >= 0; i--) {
             HudState.Slot slot = slots.get(i);
-            String label = slot.empty() ? "-" : slot.label();
-            int slotWidth = Math.max(18, font.width(label) + 6);
+            String label = slotLabel(slot);
+            int slotWidth = slotWidth(label);
             slotX -= slotWidth;
             int border = slot.empty() ? RULE : slot.overload() ? EdgeShell.ORANGE : slot.running() ? EdgeShell.CYAN : EdgeShell.GREY;
             graphics.fill(slotX, y + 3, slotX + slotWidth, y + 14, border);
@@ -287,24 +571,96 @@ public class EdgeDesktopScreen extends Screen {
         }
     }
 
-    private int pill(GuiGraphicsExtractor graphics, String name, int dot, boolean active, int x, int y, int mouseX, int mouseY, String command) {
-        int pillWidth = font.width(name) + 16;
-        boolean hovered = command != null && inside(mouseX, mouseY, x, y + 3, pillWidth, 11);
-        graphics.fill(x, y + 3, x + pillWidth, y + 14, active ? 0xFF3FE8FF : RULE);
-        graphics.fill(x + 1, y + 4, x + pillWidth - 1, y + 13, active ? TITLE_BAR : hovered ? 0xFF1C2A3C : 0xFF121826);
-        graphics.fill(x + 4, y + 7, x + 7, y + 10, dot);
-        text(graphics, name, x + 10, y + 5, EdgeShell.TEXT);
-        if (command != null) {
-            hits.add(new Hit(x, y + 3, pillWidth, 11, () -> runCommand(command)));
+    /**
+     * The taskbar's pills: the terminal, kernel.log when it's open, every running program, and
+     * ended programs whose window is still open. As many as fit before the socket slots.
+     */
+    private List<Pill> pills(EdgeShell.Data data) {
+        Set<String> ids = new LinkedHashSet<>(List.of(EdgeWindows.TERMINAL));
+        if (windows.get(EdgeWindows.KERNEL).isPresent()) {
+            ids.add(EdgeWindows.KERNEL);
         }
-        return x + pillWidth + 4;
+        data.programs().forEach(program -> ids.add(EdgeWindows.program(program.name())));
+        for (ProgramOutputs.Output output : outputs()) {
+            if (windows.get(EdgeWindows.program(output.name())).isPresent()) {
+                ids.add(EdgeWindows.program(output.name()));
+            }
+        }
+        int slotsWidth = HudFeed.state().slots().stream().mapToInt(slot -> slotWidth(slotLabel(slot)) + 3).sum();
+        int limit = width - 6 - slotsWidth - 8;
+        List<Pill> result = new ArrayList<>();
+        int x = 6 + font.width("◆ EDGE") + 16;
+        for (String id : ids) {
+            String label = EdgeWindows.isProgram(id) ? EdgeWindows.programName(id) : id;
+            int pillWidth = font.width(label) + 16;
+            if (x + pillWidth > limit) {
+                break;
+            }
+            result.add(new Pill(id, label, dot(id), x, pillWidth));
+            x += pillWidth + 4;
+        }
+        return result;
+    }
+
+    /** Where a window opens from and folds into: its pill, or the EDGE button if it has none. */
+    private EdgeWindows.Rect pillRect(String id) {
+        for (Pill pill : pills) {
+            if (pill.id().equals(id)) {
+                return new EdgeWindows.Rect(pill.x(), height - 14, pill.width(), 11);
+            }
+        }
+        return new EdgeWindows.Rect(6, height - 14, font.width("◆ EDGE") + 10, 11);
+    }
+
+    private int dot(String id) {
+        if (id.equals(EdgeWindows.TERMINAL)) {
+            return EdgeShell.CYAN;
+        }
+        if (id.equals(EdgeWindows.KERNEL)) {
+            return EdgeShell.VIOLET;
+        }
+        String name = EdgeWindows.programName(id);
+        PanelSnapshot.ProgramRow running = running(name);
+        if (running != null) {
+            return stateColor(running.state());
+        }
+        ProgramOutputs.Output output = output(name);
+        return output != null && output.ended().equals("crashed") ? EdgeShell.PINK : EdgeShell.GREY;
+    }
+
+    private int accent(String id, EdgeShell.Data data) {
+        if (id.equals(EdgeWindows.TERMINAL)) {
+            return EdgeShell.CYAN;
+        }
+        if (id.equals(EdgeWindows.KERNEL)) {
+            return EdgeShell.VIOLET;
+        }
+        String name = EdgeWindows.programName(id);
+        ProgramOutputs.Output output = output(name);
+        if (output == null) {
+            return EdgeShell.CYAN;
+        }
+        if (running(name) == null && output.ended().equals("crashed")) {
+            return EdgeShell.PINK;
+        }
+        return socketLabel(data, output.id()).startsWith("O") ? EdgeShell.ORANGE : EdgeShell.CYAN;
+    }
+
+    private int chip(GuiGraphicsExtractor graphics, String label, int x, int y, int color, int mouseX, int mouseY, Runnable action) {
+        int chipWidth = font.width(label) + 8;
+        boolean hovered = inside(mouseX, mouseY, x, y, chipWidth, 11);
+        graphics.fill(x, y, x + chipWidth, y + 11, hovered ? 0xFF1C2A3C : 0xFF121826);
+        graphics.fill(x, y, x + chipWidth, y + 1, RULE);
+        text(graphics, label, x + 4, y + 2, color);
+        hits.add(new Hit(x, y, chipWidth, 11, action));
+        return x + chipWidth + 4;
     }
 
     private void button(GuiGraphicsExtractor graphics, String label, int x, int y, int color, int mouseX, int mouseY, Runnable action) {
         boolean hovered = inside(mouseX, mouseY, x, y, 10, 10);
         graphics.fill(x, y, x + 10, y + 10, color);
         graphics.fill(x + 1, y + 1, x + 9, y + 9, hovered ? 0xFF2A1220 : TITLE_BAR);
-        text(graphics, label, x + 3, y + 1, color);
+        text(graphics, label, x + 5 - font.width(label) / 2, y + 1, color);
         hits.add(new Hit(x, y, 10, 10, action));
     }
 
@@ -312,6 +668,10 @@ public class EdgeDesktopScreen extends Screen {
     private int text(GuiGraphicsExtractor graphics, String text, int x, int y, int color) {
         graphics.text(font, text, x, y, color, false);
         return x + font.width(text);
+    }
+
+    private void centered(GuiGraphicsExtractor graphics, String text, int middle, int y, int color) {
+        text(graphics, text, middle - font.width(text) / 2, y, color);
     }
 
     /** "day 12 · 18:40", from the Overworld's clock. */
@@ -324,6 +684,50 @@ public class EdgeDesktopScreen extends Screen {
         return String.format(Locale.ROOT, "day %d · %02d:%02d", time / 24000 + 1, ofDay / 1000, ofDay % 1000 * 60 / 1000);
     }
 
+    private static String time(int minute) {
+        return String.format(Locale.ROOT, "%02d:%02d", minute / 60, minute % 60);
+    }
+
+    private static String slotLabel(HudState.Slot slot) {
+        return slot.empty() ? "-" : slot.label();
+    }
+
+    private int slotWidth(String label) {
+        return Math.max(18, font.width(label) + 6);
+    }
+
+    private static int stateColor(String state) {
+        return switch (state) {
+            case "idle", "sleeping" -> EdgeShell.GREY;
+            case "scanning", "accessing", "escalating" -> EdgeShell.CYAN;
+            default -> state.startsWith("paused") ? EdgeShell.ORANGE : EdgeShell.TEXT;
+        };
+    }
+
+    /** The terminal's own lines about a program are grey; crashes are pink; what it printed is white. */
+    private static int lineColor(String text) {
+        if (text.startsWith("crashed") || text.startsWith("on_stop failed")) {
+            return EdgeShell.PINK;
+        }
+        if (text.startsWith("started (") || text.startsWith("stopped") || text.equals("finished")) {
+            return EdgeShell.GREY;
+        }
+        return EdgeShell.TEXT;
+    }
+
+    private static int kernelColor(String text) {
+        if (text.startsWith("PANIC")) {
+            return EdgeShell.MAGENTA;
+        }
+        if (text.startsWith("denied") || text.startsWith("couldn't deny") || text.contains(" from ")) {
+            return EdgeShell.PINK;
+        }
+        if (text.startsWith("resisting")) {
+            return EdgeShell.ORANGE;
+        }
+        return text.startsWith("session") ? EdgeShell.DIM : EdgeShell.TEXT;
+    }
+
     // endregion
 
     // region Input
@@ -332,15 +736,54 @@ public class EdgeDesktopScreen extends Screen {
         if (seg.runs()) {
             runCommand(seg.command());
         } else {
-            input = seg.command();
-            cursor = input.length();
+            setInput(seg.command());
+            focusTerminal();
         }
     }
 
     private void runCommand(String command) {
         minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
         shell.submit(command, data(), Util.getMillis());
-        scroll = 0;
+        scrollTerminalToEnd();
+    }
+
+    /** ✕ and Ctrl+W: a program's window stops the program; the terminal's closes Edge. */
+    private void close(EdgeWindows.Window window) {
+        String id = window.id();
+        if (id.equals(EdgeWindows.TERMINAL)) {
+            onClose();
+            return;
+        }
+        if (EdgeWindows.isProgram(id) && running(EdgeWindows.programName(id)) != null) {
+            ClientPacketDistributor.sendToServer(new PanelRequest(PanelRequest.Action.STOP, EdgeWindows.programName(id)));
+        }
+        windows.close(id, Util.getMillis());
+    }
+
+    private void titleClicked(EdgeWindows.Window window) {
+        windows.focus(window.id());
+        if (doubleClick) {
+            windows.toggleMaximise(window.id());
+        } else {
+            startDrag(window, true);
+        }
+    }
+
+    private void startDrag(EdgeWindows.Window window, boolean move) {
+        windows.focus(window.id());
+        EdgeWindows.Rect bounds = windows.bounds(window);
+        drag = move
+                // A maximised window comes back to size under the cursor, so keep the grab near its left.
+                ? new Drag(window.id(), true, (int) Math.min(clickX - bounds.x(), window.maximised() ? 40 : bounds.width()), (int) (clickY - bounds.y()))
+                : new Drag(window.id(), false, (int) (bounds.right() - clickX), (int) (bounds.bottom() - clickY));
+    }
+
+    private void focusTerminal() {
+        windows.open(EdgeWindows.TERMINAL, Util.getMillis());
+    }
+
+    private void scrollTerminalToEnd() {
+        windows.get(EdgeWindows.TERMINAL).ifPresent(window -> window.setScroll(0));
     }
 
     @Override
@@ -348,6 +791,7 @@ public class EdgeDesktopScreen extends Screen {
         if (event.codepoint() < 32 || event.codepoint() == 127) {
             return super.charTyped(event);
         }
+        focusTerminal();
         insert(event.codepointAsString());
         return true;
     }
@@ -356,12 +800,23 @@ public class EdgeDesktopScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
         boolean ctrl = event.hasControlDown();
+        if (ctrl && key >= GLFW.GLFW_KEY_1 && key <= GLFW.GLFW_KEY_9) {
+            int index = key - GLFW.GLFW_KEY_1;
+            if (index < pills.size()) {
+                windows.pill(pills.get(index).id(), Util.getMillis());
+            }
+            return true;
+        }
+        if (ctrl && key == GLFW.GLFW_KEY_W) {
+            windows.focused().filter(window -> !window.id().equals(EdgeWindows.TERMINAL)).ifPresent(this::close);
+            return true;
+        }
         switch (key) {
             case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+                focusTerminal();
                 shell.submit(input, data(), Util.getMillis());
-                input = "";
-                cursor = 0;
-                scroll = 0;
+                setInput("");
+                scrollTerminalToEnd();
                 return true;
             }
             case GLFW.GLFW_KEY_BACKSPACE -> {
@@ -394,27 +849,31 @@ public class EdgeDesktopScreen extends Screen {
                 return true;
             }
             case GLFW.GLFW_KEY_UP -> {
+                focusTerminal();
                 setInput(shell.historyUp(input));
                 return true;
             }
             case GLFW.GLFW_KEY_DOWN -> {
+                focusTerminal();
                 setInput(shell.historyDown());
                 return true;
             }
             case GLFW.GLFW_KEY_TAB -> {
+                focusTerminal();
                 setInput(shell.complete(input, data(), Util.getMillis()));
                 return true;
             }
             case GLFW.GLFW_KEY_PAGE_UP -> {
-                scroll += 5;
+                windows.focused().ifPresent(window -> window.setScroll(window.scroll() + 5));
                 return true;
             }
             case GLFW.GLFW_KEY_PAGE_DOWN -> {
-                scroll = Math.max(0, scroll - 5);
+                windows.focused().ifPresent(window -> window.setScroll(window.scroll() - 5));
                 return true;
             }
             default -> {
                 if (ctrl && key == GLFW.GLFW_KEY_V) {
+                    focusTerminal();
                     insert(minecraft.keyboardHandler.getClipboard().replace('\n', ' ').replace('\r', ' '));
                     return true;
                 }
@@ -431,7 +890,11 @@ public class EdgeDesktopScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (event.button() == 0) {
-            for (Hit hit : List.copyOf(hits)) {
+            clickX = event.x();
+            clickY = event.y();
+            this.doubleClick = doubleClick;
+            // Topmost first: the taskbar, then windows from the top down.
+            for (Hit hit : hits.reversed()) {
                 if (inside(event.x(), event.y(), hit.x(), hit.y(), hit.width(), hit.height())) {
                     hit.action().run();
                     return true;
@@ -442,8 +905,31 @@ public class EdgeDesktopScreen extends Screen {
     }
 
     @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (drag == null || event.button() != 0) {
+            return super.mouseDragged(event, dx, dy);
+        }
+        Drag current = drag;
+        windows.get(current.id()).ifPresentOrElse(window -> {
+            if (current.move()) {
+                windows.move(current.id(), (int) event.x() - current.offsetX(), (int) event.y() - current.offsetY());
+            } else {
+                EdgeWindows.Rect bounds = windows.bounds(window);
+                windows.resize(current.id(), (int) event.x() + current.offsetX() - bounds.x(), (int) event.y() + current.offsetY() - bounds.y());
+            }
+        }, () -> drag = null);
+        return true;
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        drag = null;
+        return super.mouseReleased(event);
+    }
+
+    @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        scroll = Math.max(0, scroll + (int) Math.signum(scrollY) * 3);
+        windows.at(x, y).ifPresent(window -> window.setScroll(window.scroll() + (int) Math.signum(scrollY) * 3));
         return true;
     }
 
@@ -460,13 +946,77 @@ public class EdgeDesktopScreen extends Screen {
     private record Hit(int x, int y, int width, int height, Runnable action) {
     }
 
+    private record Pill(String id, String label, int dot, int x, int width) {
+    }
+
+    /**
+     * @param offsetX for a move, the grab point from the window's left; for a resize, from its right
+     */
+    private record Drag(String id, boolean move, int offsetX, int offsetY) {
+    }
+
+    /** The serial of the run seen when the start was asked for, and when. */
+    private record Pending(int serial, long at) {
+    }
+
+    /** Lines from {@code from} on (counted from the program's start) type in, starting at {@code start}. */
+    private static final class Typing {
+        private int serial = -1;
+        private int seen;
+        private int from;
+        private long start;
+
+        void update(ProgramOutputs.Output output, long now) {
+            if (output.serial() != serial) {
+                // A window that has just opened shows what's there at once; a restart types from the top.
+                seen = serial < 0 ? output.total() : 0;
+                from = seen;
+                serial = output.serial();
+            }
+            if (output.total() > seen) {
+                from = seen;
+                start = now;
+                seen = output.total();
+            }
+        }
+    }
+
     private static boolean inside(double px, double py, int x, int y, int width, int height) {
         return px >= x && px < x + width && py >= y && py < y + height;
     }
 
     // endregion
 
-    // region What the shell sees
+    // region What the windows see
+
+    private static List<ProgramOutputs.Output> outputs() {
+        return PanelState.snapshot().outputs();
+    }
+
+    private static ProgramOutputs.@Nullable Output output(String name) {
+        return outputs().stream().filter(output -> output.name().equals(name)).findFirst().orElse(null);
+    }
+
+    private static PanelSnapshot.@Nullable ProgramRow running(String name) {
+        return PanelState.snapshot().programs().stream().filter(program -> program.name().equals(name)).findFirst().orElse(null);
+    }
+
+    /** "S2" or "O1" if the program sits in a socket, else empty. */
+    private static String socketLabel(EdgeShell.Data data, String id) {
+        int standard = 0;
+        int overload = 0;
+        for (EdgeShell.Socket socket : data.sockets()) {
+            if (socket.overload()) {
+                overload++;
+            } else {
+                standard++;
+            }
+            if (!id.isEmpty() && socket.id().equals(id)) {
+                return socket.overload() ? "O" + overload : "S" + standard;
+            }
+        }
+        return "";
+    }
 
     /** The shell's view of the gateway: the panel snapshot plus the synced gateway data. */
     private EdgeShell.Data data() {
@@ -489,7 +1039,7 @@ public class EdgeDesktopScreen extends Screen {
                 snapshot.programs().stream().map(row -> new EdgeShell.Proc(row.id(), row.name(), row.type(), row.state(), row.ramMb(), row.tops())).toList(),
                 snapshot.flaws().stream().map(row -> new EdgeShell.Flaw(row.className(), row.severity(), row.cause(), row.approaching())).toList(),
                 snapshot.sockets().stream().map(row -> new EdgeShell.Socket(row.overload(), row.id(), row.name())).toList(),
-                snapshot.log());
+                snapshot.outputs().stream().map(ProgramOutputs.Output::name).toList());
     }
 
     /** In singleplayer the storage folder is on this computer, so Edge can open it. */

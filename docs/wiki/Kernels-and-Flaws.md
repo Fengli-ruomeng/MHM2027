@@ -69,7 +69,7 @@ The first three come from your settings and only change when you install a kerne
 
 ### Seeing your flaws
 
-- On install, the log lists the flaws your new settings create.
+- On install, kernel.log lists the flaws your new settings create.
 - `flaws` in Edge lists them all, plus the ones you're close to triggering.
 - The HUD shows any flaw that comes and goes.
 - `sys.flaws()` and `on_flaw_changed(class, severity)` let your programs react.

@@ -20,7 +20,7 @@ class EdgeShellTest {
                 List.of(new EdgeShell.Proc("Watcher", "Watcher", "resident", "idle", 4, 1)),
                 List.of(new EdgeShell.Flaw("memory", "critical", "verify = skip", false)),
                 List.of(new EdgeShell.Socket(false, "preset:mhm2027:adrenaline_shot", "Adrenaline Shot"), new EdgeShell.Socket(true, "", "")),
-                List.of("[Watcher] started", "[kernel] denied 10.71.4.200", "[Watcher] Low health: 8 HP"));
+                List.of("Watcher", "Breach"));
     }
 
     @Test
@@ -61,11 +61,14 @@ class EdgeShellTest {
     }
 
     @Test
-    void logFiltersByProgram() {
+    void logOpensWindows() {
         EdgeShell shell = new EdgeShell();
+        shell.submit("log", data(), 0);
         shell.submit("log watcher", data(), 0);
-        List<String> printed = shell.lines().stream().skip(1).map(EdgeShell.Line::text).toList();
-        assertEquals(List.of("[Watcher] started", "[Watcher] Low health: 8 HP"), printed);
+        shell.submit("log Nobody", data(), 0);
+        assertEquals(List.of(new EdgeShell.Request("WINDOW", EdgeWindows.KERNEL), new EdgeShell.Request("WINDOW", "Watcher")),
+                shell.drain());
+        assertTrue(shell.lines().getLast().text().contains("nothing from Nobody"));
     }
 
     @Test

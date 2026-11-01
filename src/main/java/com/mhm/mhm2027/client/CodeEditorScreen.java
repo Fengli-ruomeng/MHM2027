@@ -79,6 +79,8 @@ public class CodeEditorScreen extends Screen {
     private final CodeDocument document = new CodeDocument(MAX_LENGTH);
     private final List<Hit> hits = new ArrayList<>();
     private final @Nullable String initialFile;
+    /** The 1-based line to put the cursor on when the initial file arrives, or 0. */
+    private int initialLine;
     private boolean opened;
 
     private @Nullable String file;
@@ -104,8 +106,14 @@ public class CodeEditorScreen extends Screen {
     private @Nullable EditBox nameBox;
 
     public CodeEditorScreen(@Nullable String file) {
+        this(file, 0);
+    }
+
+    /** Opens a file with the cursor on a line, as a crashed program's window asks. */
+    public CodeEditorScreen(@Nullable String file, int line) {
         super(Component.translatable("mhm2027.editor.title"));
         this.initialFile = file;
+        this.initialLine = line;
     }
 
     // region Lifecycle
@@ -179,6 +187,11 @@ public class CodeEditorScreen extends Screen {
         lastEditAt = 0;
         lastCheckSent = -1;
         kernelFile = KERNEL_HEADER.matcher(document.text()).find();
+        if (initialLine > 0 && file != null && file.equals(initialFile)) {
+            document.moveTo(new Pos(Math.min(initialLine, document.lineCount()) - 1, 0), false);
+            ensureCursorVisible();
+        }
+        initialLine = 0;
     }
 
     private void sendCheck(int version, long now) {

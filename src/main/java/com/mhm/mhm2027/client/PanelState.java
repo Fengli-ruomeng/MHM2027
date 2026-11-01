@@ -15,12 +15,19 @@ public final class PanelState {
     private static boolean messageSuccess;
     private static long messageShownAt;
     private static int messageSerial;
+    private static int snapshotSerial;
 
     private PanelState() {
     }
 
     static void accept(PanelSnapshot latest) {
         snapshot = latest;
+        snapshotSerial++;
+    }
+
+    /** Goes up by one with every snapshot, so a screen can tell whether one has arrived since it opened. */
+    static int snapshotSerial() {
+        return snapshotSerial;
     }
 
     static void accept(PanelMessage latest) {

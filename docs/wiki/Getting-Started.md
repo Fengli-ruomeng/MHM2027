@@ -43,9 +43,9 @@ Once your gateway is on, **G** opens **Edge**, your gateway's operating system: 
 
 ## 3. Run your first program
 
-Your storage starts with example scripts. Type `ls` to see them, then `run Monitor` (or click **Monitor.lua** in the `ls` output and press Enter). It warns you when your health gets low. `ps` shows it running, and `log Monitor` shows what it has printed.
+Your storage starts with example scripts. Type `ls` to see them, then `run Monitor` (or click **Monitor.lua** in the `ls` output and press Enter). It warns you when your health gets low. Its window opens on the right and shows what it prints; `ps` lists everything running.
 
-Try `run Status` too: it prints your RAM, TOPS and programs to the log and stops.
+Try `run Status` too: it prints your RAM, TOPS and programs in its window and stops.
 
 ## 4. Write your own
 

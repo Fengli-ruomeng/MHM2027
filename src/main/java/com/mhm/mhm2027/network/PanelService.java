@@ -216,7 +216,7 @@ public final class PanelService {
         loadout.standard().forEach(id -> sockets.add(socketRow(false, id)));
         loadout.overload().forEach(id -> sockets.add(socketRow(true, id)));
 
-        return new PanelSnapshot(kernelInfo, programs, scripts, terminal.log(),
+        return new PanelSnapshot(kernelInfo, programs, scripts, terminal.outputs().outputs(), terminal.outputs().kernel(),
                 terminal.isRebooting() ? terminal.lockReason() : "", terminal.isRebooting() ? terminal.lockSecondsLeft() : 0, flaws,
                 sockets, FlashStationBlock.inReach(player), terminal.overloadLockSecondsLeft());
     }

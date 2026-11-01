@@ -3,6 +3,7 @@ package com.mhm.mhm2027.network;
 import java.util.List;
 
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.terminal.ProgramOutputs;
 
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -11,15 +12,17 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
 /**
- * Server to client: what the control panel shows about the player's terminal. Sent when the
- * panel opens, after every action, and twice a second while it stays open. The gateway's own
+ * Server to client: what Edge shows about the player's terminal, including each program's
+ * output for its window. Sent when Edge opens, after every action, and twice a second while it
+ * stays open. The gateway's own
  * numbers (RAM, TOPS, Buffer, Heat) come from the synced attachment instead.
  */
 public record PanelSnapshot(
         KernelInfo kernel,
         List<ProgramRow> programs,
         List<ScriptRow> scripts,
-        List<String> log,
+        List<ProgramOutputs.Output> outputs,
+        List<ProgramOutputs.Line> kernelLog,
         String lockReason,
         int lockSecondsLeft,
         List<FlawRow> flaws,
@@ -111,13 +114,30 @@ public record PanelSnapshot(
         }
     }
 
+    static final StreamCodec<RegistryFriendlyByteBuf, ProgramOutputs.Line> LINE_CODEC = StreamCodec.composite(
+            ByteBufCodecs.VAR_INT, ProgramOutputs.Line::minute,
+            ByteBufCodecs.STRING_UTF8, ProgramOutputs.Line::text,
+            ProgramOutputs.Line::new);
+
+    static final StreamCodec<RegistryFriendlyByteBuf, ProgramOutputs.Output> OUTPUT_CODEC = StreamCodec.composite(
+            ByteBufCodecs.STRING_UTF8, ProgramOutputs.Output::name,
+            ByteBufCodecs.STRING_UTF8, ProgramOutputs.Output::id,
+            ByteBufCodecs.VAR_INT, ProgramOutputs.Output::serial,
+            ByteBufCodecs.VAR_INT, ProgramOutputs.Output::total,
+            ByteBufCodecs.STRING_UTF8, ProgramOutputs.Output::ended,
+            ByteBufCodecs.STRING_UTF8, ProgramOutputs.Output::reason,
+            ByteBufCodecs.VAR_INT, ProgramOutputs.Output::errorLine,
+            LINE_CODEC.apply(ByteBufCodecs.list()), ProgramOutputs.Output::lines,
+            ProgramOutputs.Output::new);
+
     public static final Type<PanelSnapshot> TYPE = new Type<>(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "panel_snapshot"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, PanelSnapshot> STREAM_CODEC = StreamCodec.composite(
             KernelInfo.STREAM_CODEC, PanelSnapshot::kernel,
             ProgramRow.STREAM_CODEC.apply(ByteBufCodecs.list()), PanelSnapshot::programs,
             ScriptRow.STREAM_CODEC.apply(ByteBufCodecs.list()), PanelSnapshot::scripts,
-            ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), PanelSnapshot::log,
+            OUTPUT_CODEC.apply(ByteBufCodecs.list()), PanelSnapshot::outputs,
+            LINE_CODEC.apply(ByteBufCodecs.list()), PanelSnapshot::kernelLog,
             ByteBufCodecs.STRING_UTF8, PanelSnapshot::lockReason,
             ByteBufCodecs.VAR_INT, PanelSnapshot::lockSecondsLeft,
             FlawRow.STREAM_CODEC.apply(ByteBufCodecs.list()), PanelSnapshot::flaws,
@@ -126,8 +146,8 @@ public record PanelSnapshot(
             ByteBufCodecs.VAR_INT, PanelSnapshot::overloadLockSeconds,
             PanelSnapshot::new);
 
-    public static final PanelSnapshot EMPTY = new PanelSnapshot(KernelInfo.EMPTY, List.of(), List.of(), List.of(), "", 0, List.of(),
-            List.of(), false, 0);
+    public static final PanelSnapshot EMPTY = new PanelSnapshot(KernelInfo.EMPTY, List.of(), List.of(), List.of(), List.of(), "", 0,
+            List.of(), List.of(), false, 0);
 
     public boolean socketed(String id) {
         return sockets.stream().anyMatch(socket -> socket.id().equals(id));

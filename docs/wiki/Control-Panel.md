@@ -5,23 +5,50 @@
 ## The screen
 
 - **Top bar**: EDGE, you and your address, your level and kernel, cell meters for Buffer, RAM, TOPS and Heat, and the in-game day and time.
-- **The terminal**: type a command and press **Enter**. Output types itself in. Underlined words are clickable:
-  - some run at once, such as **[stop]** and **[log]** next to a program in `ps`;
-  - others put a command in the prompt for you to check, such as a file name in `ls` (it fills in `run Breach`). Press Enter to go ahead.
-- **Quick commands** under the prompt: `help`, `ls`, `ps`, `status`, `socket ls` and `flaws`, one click each.
-- **Taskbar**: **◆ EDGE** shows the help, there's a pill for each running program (click one to see its lines from the log), and your sockets sit on the right.
+- **Windows**: the terminal on the left, and a window for each program you open down the right. See [Windows](#windows).
+- **Taskbar**: **◆ EDGE** shows the help. Then come the pills: the terminal, kernel.log when it's open, every running program, and any ended program whose window is still open. The dot shows what each is doing. Your sockets sit on the right.
 
-The terminal keeps its output and history until you leave the world, so you can close Edge and pick up where you were.
+Edge keeps its windows, output and history until you leave the world, so you can close it and pick up where you were.
+
+## The terminal
+
+Type a command and press **Enter**. Output types itself in. Underlined words are clickable:
+
+- some run at once, such as **[stop]** and **[log]** next to a program in `ps`;
+- others put a command in the prompt for you to check, such as a file name in `ls` (it fills in `run Breach`). Press Enter to go ahead.
+
+Under the prompt are quick commands: `help`, `ls`, `ps`, `status`, `socket ls` and `flaws`, one click each. Typing always goes to the terminal, and brings it forward.
+
+## Windows
+
+Every program has its own window, showing what it printed with `print` and `sys.log`, newest at the bottom, each line stamped with the time of day. A window keeps the last 40 lines.
+
+- **Opening**: `run` opens the program's window once it starts. `log <program>` or its taskbar pill brings it back. Programs started some other way, such as by another program, get a pill but no window until you open one.
+- **Title bar**: the name, its socket (S1, O1...) or type, and what it's doing right now.
+- **Moving**: drag the title bar. Drag the corner to resize. Double-click the title bar, or press **□**, to fill the screen.
+- **_** sends the window to the taskbar. Click its pill to bring it back; clicking the pill of the window on top sends it away again.
+- **×** **stops the program** and closes its window. The terminal's × closes Edge.
+- **Overload** programs show your Heat at the bottom of their window.
+
+When a program ends, its window stays and says how: **finished**, **stopped** (and why, such as a reboot) or **crashed**. For a crash it shows the error and the line it happened on, with buttons:
+
+- **restart** runs it again in the same window;
+- **edit line 12** opens the script in the editor with the cursor on that line (not for presets);
+- **close** closes the window.
+
+Edge keeps the windows of the last 8 programs that ended.
+
+**kernel.log** (`log` with no program) is the kernel's own window: installs, reboots, panics, access attempts, denials, resists and sessions.
 
 ## Commands
 
 | Command | Does |
 | --- | --- |
 | `ls` | What's in your storage: your programs, kernels and presets |
-| `run <program>` | Start a program. Names with spaces work: `run Adrenaline Shot` |
+| `run <program>` | Start a program and open its window. Names with spaces work: `run Adrenaline Shot` |
 | `stop <program>` | Stop one |
 | `ps` | Running programs, with their state, TOPS and RAM |
-| `log [program]` | The terminal log (the last 50 lines), or just one program's lines |
+| `log [program]` | Open a program's window, or kernel.log |
 | `status` | Level, kernel, Buffer, RAM and Leak, TOPS, Heat and sockets |
 | `flaws` | Your flaws and their causes, and the ones you're close to |
 | `socket ls` / `socket add <program>` / `socket rm <program>` | Your sockets; changes need a Flash Station (see [Sockets and Overload](Sockets-and-Overload)) |
@@ -41,14 +68,17 @@ The terminal keeps its output and history until you leave the world, so you can 
 | Enter | Runs the command |
 | Tab | Completes the command or name you're typing; with several matches it lists them |
 | Up / Down | Goes back and forward through your commands |
-| Page Up / Page Down, mouse wheel | Scrolls the output |
+| Mouse wheel | Scrolls the window under the mouse |
+| Page Up / Page Down | Scrolls the window on top |
+| Ctrl+1 to Ctrl+9 | Clicks that taskbar pill: opens, brings forward or sends away its window |
+| Ctrl+W | Closes the window on top, stopping its program (not the terminal) |
 | Ctrl+V | Pastes |
 | Ctrl+L | Clears the terminal |
 | Esc | Closes Edge |
 
 ## Program states
 
-`ps` and the taskbar show what each program is doing:
+`ps`, the title bars and the taskbar dots show what each program is doing:
 
 | State | Meaning |
 | --- | --- |
@@ -58,6 +88,7 @@ The terminal keeps its output and history until you leave the world, so you can 
 | scanning | Waiting for `remote.inspect` |
 | accessing, escalating | Waiting for an access attempt |
 | paused | It used its whole budget this tick and continues next tick |
+| finished, stopped, crashed | It has ended; its window says why |
 
 ## The code editor
 

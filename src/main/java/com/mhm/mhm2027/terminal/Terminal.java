@@ -79,6 +79,7 @@ public final class Terminal {
     private Kernel kernel;
     private final List<Program> programs = new ArrayList<>();
     private final Deque<String> log = new ArrayDeque<>();
+    private final ProgramOutputs outputs = new ProgramOutputs();
     private final List<int[]> recoveringTops = new ArrayList<>();
     /** TOPS committed by resist(): {amount, ticks left}. Held for the length of the attempt. */
     private final List<int[]> resisting = new ArrayList<>();
@@ -147,6 +148,7 @@ public final class Terminal {
         }
 
         programs.add(program);
+        outputs.started(program.name(), program.id());
         program.begin();
         updateUsage(player);
         refreshFlaws(player, true);
@@ -199,7 +201,7 @@ public final class Terminal {
         programs.remove(program.get());
         program.get().stop(this, instructionsPerTops());
         recoveringTops.add(new int[]{program.get().tops(), TOPS_RECOVERY_TICKS});
-        log(name, "stopped");
+        ended(name, "stopped", "");
         withPlayer(player -> {
             updateUsage(player);
             refreshFlaws(player, true);
@@ -213,7 +215,7 @@ public final class Terminal {
         if (poweredOff) {
             return;
         }
-        stopAllSilently();
+        stopAllSilently("stopped", "reboot");
         lock("reboot", REBOOT_LOCK_TICKS);
         withPlayer(player -> {
             applyDowntimeDebuff(player, REBOOT_LOCK_TICKS, false);
@@ -242,7 +244,7 @@ public final class Terminal {
         }
         Kernel next = loadKernel(player, id);
 
-        stopAllSilently();
+        stopAllSilently("stopped", "kernel install");
         kernel = next;
         kernelReadyAt = now + Config.KERNEL_COOLDOWN_SECONDS.get() * 20L;
         data(player).setKernel(next.isBaseline() ? GatewayData.DEFAULT_KERNEL : id);
@@ -391,7 +393,7 @@ public final class Terminal {
         flash = new Flash(data.bufferMb(), data.tier().isNull());
         flashHeldAt = now;
         flashShare = 0;
-        stopAllSilently();
+        stopAllSilently("stopped", "flashing");
         // Sessions this gateway holds on others ran on programs that are gone now.
         Sessions.endAllBy(owner, "flashing");
         data.setBufferMb(0);
@@ -463,7 +465,7 @@ public final class Terminal {
         poweredOff = true;
         Sessions.endAllOn(owner, "died");
         Sessions.endAllBy(owner, "died");
-        stopAllSilently();
+        stopAllSilently("stopped", "died");
         modifiers.clear();
         cooldowns.clear();
         lockedUntil = 0;
@@ -483,7 +485,9 @@ public final class Terminal {
         modifiers.clear();
     }
 
-    private void stopAllSilently() {
+    /** Every program goes at once, with no on_stop; their windows say how. */
+    private void stopAllSilently(String how, String reason) {
+        programs.forEach(program -> outputs.ended(program.name(), how, reason));
         programs.clear();
         recoveringTops.clear();
         resisting.clear();
@@ -656,7 +660,7 @@ public final class Terminal {
         for (Program program : overloads) {
             programs.remove(program);
             data.setLeakMb(data.leakMb() + program.ramMb());
-            log(program.name(), "crashed: overheated");
+            ended(program.name(), "crashed", "overheated");
             announceCrash(program);
         }
         int lockSeconds = Config.OVERLOAD_LOCK_SECONDS.get();
@@ -674,7 +678,7 @@ public final class Terminal {
         GatewayData data = data(player);
         double leak = programs.stream().mapToDouble(program -> program.ramMb() * PANIC_LEAK_SHARE).sum();
         data.setLeakMb(data.leakMb() + leak);
-        stopAllSilently();
+        stopAllSilently("crashed", "kernel panic");
         lock("kernel panic", PANIC_LOCK_TICKS);
         pendingPanic = reason;
         applyDowntimeDebuff(player, PANIC_LOCK_TICKS, false);
@@ -695,7 +699,7 @@ public final class Terminal {
             Program starved = programs.reversed().stream().min(Comparator.comparingInt(Program::priority)).orElseThrow();
             programs.remove(starved);
             data.setLeakMb(data.leakMb() + starved.ramMb() * PANIC_LEAK_SHARE);
-            log(starved.name(), "crashed: starved of TOPS");
+            ended(starved.name(), "crashed", "starved of TOPS");
             announceCrash(starved);
         }
         recheckFlaws = true;
@@ -994,6 +998,24 @@ public final class Terminal {
         while (log.size() > LOG_LINES) {
             log.removeFirst();
         }
+        outputs.line(source, clockMinute(), message);
+    }
+
+    /** Logs how a program ended; its window in Edge keeps the output and shows why. */
+    void ended(String name, String how, String reason) {
+        log(name, reason.isEmpty() ? how : how + ": " + reason);
+        outputs.ended(name, how, reason);
+    }
+
+    /** What each program printed, and kernel.log, for Edge's windows. */
+    public ProgramOutputs outputs() {
+        return outputs;
+    }
+
+    /** The Overworld's time of day in minutes, as Edge's clock shows it. */
+    private int clockMinute() {
+        long ofDay = (server.overworld().getOverworldClockTime() + 6000) % 24000;
+        return (int) (ofDay * 60 / 1000);
     }
 
     void notifyCrash(Program program) {

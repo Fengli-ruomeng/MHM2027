@@ -195,7 +195,7 @@ public final class Program implements ScriptHost {
                 }
             }
         } catch (LuaError e) {
-            terminal.log(name, "crashed: " + ScriptCompiler.firstLine(e.getMessage()));
+            terminal.ended(name, "crashed", ScriptCompiler.firstLine(e.getMessage()));
             terminal.notifyCrash(this);
             return false;
         }
@@ -203,7 +203,7 @@ public final class Program implements ScriptHost {
         recordUsage((double) used / instructionsPerTops);
 
         if (type != ProgramType.RESIDENT && current == null && queue.isEmpty()) {
-            terminal.log(name, "finished");
+            terminal.ended(name, "finished", "");
             return false;
         }
         return true;

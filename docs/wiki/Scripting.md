@@ -14,7 +14,7 @@ program { name = "Guard", type = "resident", tops = 4 }
 
 | Field | Meaning |
 | --- | --- |
-| `name` | What Edge and the log call it |
+| `name` | What Edge calls it: its window, the taskbar and `ps` |
 | `type` | `resident`, `transient` or `query` (below) |
 | `tops` | TOPS it reserves while it runs. More TOPS means it can run more code per tick |
 | `priority` | 1 to 9, default 5. Only matters under a `priority` kernel: higher runs first and is cut last |
@@ -56,6 +56,10 @@ Each program queues up to 8 events. If it's busy for too long, new ones are drop
 
 Some calls take time: `sys.sleep(seconds)`, `remote.inspect(target)`, `remote.access(target)` and `s.escalate()`. The program pauses at that line and carries on when the answer arrives. Other events wait in the queue until then.
 
+## Output
+
+`print` and `sys.log` write a line to the program's window in Edge, stamped with the time of day. Each window keeps its last 40 lines, and stays after the program ends, so you can see why it stopped.
+
 ## Other gateways
 
 Other entities come to your code as **handles**. You get them from `remote.target()` (the gateway under your crosshair), `remote.scan()`, or from events such as `on_hit_taken(attacker)`. Read their fields:
@@ -79,7 +83,7 @@ The editor shows a program's cost while you write it:
 
 ## When things go wrong
 
-- A Lua error **crashes** the program: it stops, the log shows the line, and your other programs hear `on_program_crash(name)`.
+- A Lua error **crashes** the program: it stops, its window shows the error and the line, with a button that opens the editor there, and your other programs hear `on_program_crash(name)`.
 - Calls with wrong arguments are errors. For example, `me.speed_boost()` with no amount crashes. Check the [API Reference](API-Reference) for each call's arguments.
 - Calls on cooldown don't crash. They return `false`, so it's safe to retry them on a timer.
 
@@ -88,7 +92,7 @@ The editor shows a program's cost while you write it:
 | Script | What it shows |
 | --- | --- |
 | Monitor.lua | A resident program that warns when your health is low |
-| Status.lua | A query that prints your resources to the log |
+| Status.lua | A query that prints your resources in its window |
 | Spinner.lua | An endless loop: it only slows itself, it can't freeze the server |
 | Adrenaline.lua | A speed burst after a big hit (needs a socket) |
 | Scanner.lua | Scans the nearest gateway and logs its level and flaws |
