@@ -195,6 +195,8 @@ publishing {
 
 tasks.named('test', Test) {
     useJUnitPlatform()
+    // The wiki tests read docs/wiki, so a change there must re-run them.
+    inputs.dir('docs/wiki')
 }
 
 tasks.withType(JavaCompile).configureEach {

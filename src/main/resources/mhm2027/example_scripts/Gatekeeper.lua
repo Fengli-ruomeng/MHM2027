@@ -1,4 +1,4 @@
--- Gatekeeper: a defensive kernel. Install it from the panel's Kernel tab.
+-- Gatekeeper: a starter firewall. Install it at a Flash Station: kernel install Gatekeeper in Edge.
 -- Turns away anyone matching a flaw, slows down forced attempts, and tells you when someone gets in.
 -- Two hooks, which fits the 2 hook points of an LV0 gateway.
 kernel { name = "Gatekeeper", schedule = "fair", gc = "normal", verify = "full", rate_limit = 4 }

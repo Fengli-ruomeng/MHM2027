@@ -2,6 +2,8 @@
 
 You join the world with an **LV0 gateway**. It's weak, but it already runs programs.
 
+This page is the quick tour. If you're new to the mod or to programming, the [Beginner's Guide](Beginners-Guide) explains the same things step by step, with programs to try.
+
 ## 0. Switch it on
 
 Your gateway starts **off** whenever you join a world or respawn. While it's off you have no HUD, no programs and no cyber gear, you're slowed, and anything can hack you without a fight. Press **G** to boot it: the boot screen plays for a few seconds, then Edge opens and the HUD comes back. You can close the boot screen early, but the boot carries on and you're blind and badly slowed until it finishes.

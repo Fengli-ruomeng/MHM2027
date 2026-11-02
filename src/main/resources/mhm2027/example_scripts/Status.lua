@@ -1,5 +1,4 @@
--- Status: a query program. It reads your terminal into the log and exits.
--- Run it, then check /edge log.
+-- Status: a query program. It reads your gateway into its window in Edge and exits.
 program { name = "Status", type = "query", tops = 2 }
 
 function on_run()

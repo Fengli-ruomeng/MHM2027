@@ -4,17 +4,22 @@ MoreHarderMinecraft: Edge - terminal scripts
 This folder is your gateway's local storage. Every .lua file in it is a script you can run;
 the terminal reads the file fresh each time you start it.
 
-Press G (or the key set under Controls) to open the control panel:
-  Status      RAM, TOPS, Buffer, Heat and flaws
-  Processes   what's running and what it costs; run, stop and reboot
-  Kernel      the installed kernel; swap kernels at a Flash Station (Baseline is built in)
-  Log         errors, print and sys.log output
+Press G (or the key set under Controls) to boot your gateway and open Edge, its terminal:
+  ls            what's in this folder
+  run <name>    start a program; its window shows what it prints
+  edit <name>   open a script in the editor (a new name creates it)
+  kernel install <name>, socket add <name>   at a Flash Station
+  help          every command
+  man <topic>   how an API, event, hook or command works
+
+New to all this? The wiki's Beginner's Guide starts from zero:
+  https://github.com/Fengli-ruomeng/MHM2027/wiki/Beginners-Guide
 
 Server operators also have /edge commands for testing and administration.
 
 Examples
   Monitor.lua       LV0  resident: warns when your health is low
-  Status.lua        LV0  query: prints RAM, TOPS and programs to the log
+  Status.lua        LV0  query: prints RAM, TOPS and programs in its window
   Spinner.lua       LV0  resident: an endless loop that only slows itself
   Adrenaline.lua    LV1  resident: speed burst after a big hit (runs from a socket)
   Scanner.lua       LV0  resident: scans the nearest gateway and logs its level and flaws
@@ -37,7 +42,7 @@ Kernel settings: every setting that opens a flaw also buys something
 
 Sockets
   Programs that change your body (any me.*_boost, fall_guard, regen_burst...) run only from
-  a socket. Put them in one from the Processes tab while standing at a Flash Station.
+  a socket. Put them in one with socket add <name> in Edge, at a Flash Station.
   Programs that only read or decide need no socket. Your level sets how many sockets you have.
   Overload sockets (LV4 and up) take resident programs whose header says overload = true. Their code
   may reach above your level (presets by 6 levels, your own scripts by 2), and every second

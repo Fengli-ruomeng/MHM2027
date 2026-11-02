@@ -6,7 +6,9 @@ Nothing here is hidden or random. Your weaknesses come from the choices you make
 
 ## Where to start
 
-New to the mod? Read these in order:
+**New to the mod? Read the [Beginner's Guide](Beginners-Guide).** Thirteen short pages, in order: what Edge is, what the numbers on your screen mean, your first program (no experience needed), why to level up, how to build a firewall and tune your kernel, how to hack mobs back, and a collection of programs for fighting and for everyday survival. Every example in it runs as written.
+
+Already know the basics? The rules, in short:
 
 1. [Getting Started](Getting-Started): your gateway, the HUD, Edge and your first script.
 2. [Gateway and Resources](Gateway-and-Resources): RAM, TOPS, Buffer, Leak and Heat, and what happens when they run out.
