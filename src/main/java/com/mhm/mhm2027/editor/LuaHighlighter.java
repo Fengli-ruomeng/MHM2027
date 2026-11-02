@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import com.mhm.mhm2027.terminal.ApiSpec;
+
 /**
  * Splits Lua source into coloured spans for the editor. Line by line, carrying state across
  * lines so long comments and long strings ({@code --[[ ]]}, {@code [[ ]]}) colour correctly.
@@ -22,7 +24,7 @@ public final class LuaHighlighter {
     private static final Set<String> BUILTINS = Set.of("print", "pairs", "ipairs", "next", "select", "type", "tostring",
             "tonumber", "error", "assert", "pcall", "xpcall", "rawget", "rawset", "rawequal", "rawlen", "setmetatable",
             "getmetatable", "unpack", "math", "string", "table", "chance");
-    private static final Set<String> NAMESPACES = Set.of("me", "sys", "remote");
+    private static final Set<String> NAMESPACES = Set.copyOf(ApiSpec.NAMESPACES);
     private static final Set<String> HEADERS = Set.of("program", "kernel");
 
     private LuaHighlighter() {

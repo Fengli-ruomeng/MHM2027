@@ -16,7 +16,7 @@ import com.mhm.mhm2027.gateway.GatewayTier;
  */
 public final class ScriptDiagnostics {
     private static final Pattern LINE_NUMBER = Pattern.compile(":(\\d+):");
-    private static final Pattern API_NAME = Pattern.compile("\\b((?:me|sys|remote)\\.[A-Za-z_]+)");
+    private static final Pattern API_NAME = Pattern.compile("\\b((?:" + String.join("|", ApiSpec.NAMESPACES) + ")\\.[A-Za-z_]+)");
     private static final Pattern NAMED_HANDLER = Pattern.compile("^(on_[a-z_]+) ");
     private static final Pattern HEADER = Pattern.compile("^\\s*(program|kernel)\\s*\\{");
 

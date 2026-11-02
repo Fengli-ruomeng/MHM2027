@@ -37,6 +37,15 @@ class ApiReferenceTest {
     }
 
     @Test
+    void everyApiIsOnThePage() {
+        String page = render();
+        for (ApiSpec spec : ApiSpec.all()) {
+            assertTrue(ApiSpec.NAMESPACES.contains(spec.namespace()), "add " + spec.namespace() + " to ApiSpec.NAMESPACES");
+            assertTrue(page.contains("| `" + spec.id() + "("), "give the " + spec.namespace() + " namespace a section on the page");
+        }
+    }
+
+    @Test
     void theWikiPageMatchesTheCode() throws Exception {
         String page = render();
         if (System.getenv("UPDATE_WIKI") != null) {
@@ -60,6 +69,7 @@ class ApiReferenceTest {
         section(out, "me", "`me`: your own body");
         section(out, "sys", "`sys`: your terminal");
         section(out, "remote", "`remote`: other gateways");
+        section(out, "world", "`world`: what's around you");
 
         out.append("\n## Program events\n\n");
         out.append("Define a function with the event's name and the program runs it when the event happens.\n\n");

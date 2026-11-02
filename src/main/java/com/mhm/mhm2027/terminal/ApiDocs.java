@@ -22,6 +22,11 @@ public final class ApiDocs {
         APIS.put("me.hunger", "Your food level, 0 to 20.");
         APIS.put("me.pos", "Your position: x, y, z.");
         APIS.put("me.looking_at", "What's under your crosshair within reach: `{type = \"block\", id, x, y, z}` or `{type = \"entity\", id, entity}`, or nil.");
+        APIS.put("me.inventory", "Everything you carry: a list of `{slot, item, count}`, with `damage` and `max_damage` for things that wear out. Slots 0 to 8 are the hotbar.");
+        APIS.put("me.held", "What's in your main hand: `{item, count}`, with `damage` and `max_damage` if it wears out; or nil.");
+        APIS.put("me.effects", "Your effects: a list of `{id, level, seconds}`. An effect that never runs out has `math.huge` seconds.");
+        APIS.put("me.air", "Breath left underwater, in seconds, and the most you can hold (15).");
+        APIS.put("me.xp", "Your XP level, and how far you are to the next one, 0 to 1.");
         APIS.put("me.speed_boost", "Faster movement: amount 0.05 to 0.5, for 1 to 10 seconds.");
         APIS.put("me.jump_boost", "Higher jumps: amount 0.05 to 0.5, for 1 to 10 seconds.");
         APIS.put("me.fall_guard", "No fall damage for 1 to 10 seconds.");
@@ -49,6 +54,14 @@ public final class ApiDocs {
         APIS.put("remote.access", "Waits for an access attempt, then returns a session, or nil and a reason. See [Cyber Combat](Cyber-Combat).");
         APIS.put("sys.end_session", "Close a session someone holds on you. Costs Buffer.");
         APIS.put("sys.reboot", "Reboot: every program stops and every session on you ends, with a short debuff.");
+        APIS.put("world.time", "The Overworld's time of day, 0 to 23999 (0 sunrise, 6000 noon, 12000 sunset, 18000 midnight), and whether it's night (13000 to 23000).");
+        APIS.put("world.day", "Which day it is: 0 on the world's first day, then 1, 2 and so on.");
+        APIS.put("world.weather", "The weather where you are: \"clear\", \"rain\" or \"thunder\". Snow counts as rain.");
+        APIS.put("world.light", "The light at your feet, 0 to 15, and how much of it comes from blocks such as torches. In the Overworld, monsters only spawn where that second number is 0.");
+        APIS.put("world.biome", "The biome you're in, such as \"minecraft:plains\".");
+        APIS.put("world.dimension", "Where you are: \"minecraft:overworld\", \"minecraft:the_nether\" or \"minecraft:the_end\".");
+        APIS.put("world.block", "The block at an offset from your feet, each of dx, dy, dz from -4 to 4: its id, or \"hidden\" if blocks you can't see through cover every side of it.");
+        APIS.put("world.mobs", "Creatures without a gateway around you, nearest first, up to 8: a list of `{id, name, distance, hostile}`. The radius is capped at your scan range. Gateways are in `remote.scan`.");
 
         EVENTS.put("on_start", "A resident program starts.");
         EVENTS.put("on_stop", "The program is stopped. It gets one short slice to tidy up.");

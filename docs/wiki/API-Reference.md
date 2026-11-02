@@ -19,6 +19,11 @@ Every call, event and hook your scripts can use, taken from the mod's code.
 | `me.hunger()` | LV0 |  |  |  | 1 MB | Your food level, 0 to 20. |
 | `me.pos()` | LV0 |  |  |  | 1 MB | Your position: x, y, z. |
 | `me.looking_at()` | LV0 |  |  |  | 2 MB | What's under your crosshair within reach: `{type = "block", id, x, y, z}` or `{type = "entity", id, entity}`, or nil. |
+| `me.inventory()` | LV0 |  |  |  | 2 MB | Everything you carry: a list of `{slot, item, count}`, with `damage` and `max_damage` for things that wear out. Slots 0 to 8 are the hotbar. |
+| `me.held()` | LV0 |  |  |  | 1 MB | What's in your main hand: `{item, count}`, with `damage` and `max_damage` if it wears out; or nil. |
+| `me.effects()` | LV0 |  |  |  | 1 MB | Your effects: a list of `{id, level, seconds}`. An effect that never runs out has `math.huge` seconds. |
+| `me.air()` | LV0 |  |  |  | 1 MB | Breath left underwater, in seconds, and the most you can hold (15). |
+| `me.xp()` | LV0 |  |  |  | 1 MB | Your XP level, and how far you are to the next one, 0 to 1. |
 | `me.speed_boost(amount, seconds)` | LV1 |  | yes | 8 s | 4 MB | Faster movement: amount 0.05 to 0.5, for 1 to 10 seconds. |
 | `me.jump_boost(amount, seconds)` | LV2 |  | yes | 8 s | 4 MB | Higher jumps: amount 0.05 to 0.5, for 1 to 10 seconds. |
 | `me.fall_guard(seconds)` | LV2 |  | yes | 10 s | 4 MB | No fall damage for 1 to 10 seconds. |
@@ -56,6 +61,19 @@ Every call, event and hook your scripts can use, taken from the mod's code.
 | `remote.scan(radius)` | LV0 |  |  |  | 4 MB | Gateways around you, nearest first, up to 8 handles. The radius is capped at your scan range. |
 | `remote.inspect(target)` | LV0 |  |  |  | 4 MB | Waits about 1 s (faster with a high rate_limit), then returns the target's address, name, level and flaws. They hear `on_scanned`. |
 | `remote.access(target, method)` | LV0 |  |  |  | 6 MB | Waits for an access attempt, then returns a session, or nil and a reason. See [Cyber Combat](Cyber-Combat). |
+
+## `world`: what's around you
+
+| Call | Level | Kernel | Socket | Cooldown | RAM | What it does |
+| --- | --- | --- | --- | --- | --- | --- |
+| `world.time()` | LV0 | yes |  |  | 1 MB | The Overworld's time of day, 0 to 23999 (0 sunrise, 6000 noon, 12000 sunset, 18000 midnight), and whether it's night (13000 to 23000). |
+| `world.day()` | LV0 | yes |  |  | 1 MB | Which day it is: 0 on the world's first day, then 1, 2 and so on. |
+| `world.weather()` | LV0 | yes |  |  | 1 MB | The weather where you are: "clear", "rain" or "thunder". Snow counts as rain. |
+| `world.light()` | LV0 |  |  |  | 1 MB | The light at your feet, 0 to 15, and how much of it comes from blocks such as torches. In the Overworld, monsters only spawn where that second number is 0. |
+| `world.biome()` | LV0 |  |  |  | 1 MB | The biome you're in, such as "minecraft:plains". |
+| `world.dimension()` | LV0 |  |  |  | 1 MB | Where you are: "minecraft:overworld", "minecraft:the_nether" or "minecraft:the_end". |
+| `world.block(dx, dy, dz)` | LV1 |  |  |  | 2 MB | The block at an offset from your feet, each of dx, dy, dz from -4 to 4: its id, or "hidden" if blocks you can't see through cover every side of it. |
+| `world.mobs(radius)` | LV0 |  |  |  | 4 MB | Creatures without a gateway around you, nearest first, up to 8: a list of `{id, name, distance, hostile}`. The radius is capped at your scan range. Gateways are in `remote.scan`. |
 
 ## Program events
 

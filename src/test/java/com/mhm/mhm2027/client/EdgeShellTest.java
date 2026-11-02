@@ -215,6 +215,11 @@ class EdgeShellTest {
                 .filter(seg -> seg.text().startsWith("remote.access(")).findFirst().orElseThrow();
         assertEquals("man remote.access", access.command());
         assertEquals("man remote.access", shell.complete("man remote.acc", data(), 0));
+
+        shell.submit("man world", data(), 0);
+        assertTrue(shell.lines().stream().flatMap(line -> line.segs().stream())
+                .anyMatch(seg -> seg.text().startsWith("world.mobs(") && seg.command().equals("man world.mobs")));
+        assertTrue(EdgeShell.manTopics().contains("world"));
     }
 
     @Test

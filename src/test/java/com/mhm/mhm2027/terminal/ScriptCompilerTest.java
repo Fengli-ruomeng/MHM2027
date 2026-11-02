@@ -66,4 +66,30 @@ class ScriptCompilerTest {
         assertThrows(InstallException.class, () ->
                 ScriptCompiler.scanApis("remote.target()", true, null, 11));
     }
+
+    @Test
+    void worldApisAreReadOnlyAndMostlyFromLevelZero() throws Exception {
+        assertEquals(Set.of(ApiSpec.WORLD_TIME, ApiSpec.WORLD_LIGHT, ApiSpec.WORLD_MOBS, ApiSpec.ME_INVENTORY),
+                ScriptCompiler.scanApis("""
+                        local t, night = world.time()
+                        local light, fromBlocks = world.light()
+                        local near = world.mobs(8)
+                        local items = me.inventory()
+                        """, false, ProgramType.QUERY, 0));
+        InstallException e = assertThrows(InstallException.class, () ->
+                ScriptCompiler.scanApis("world.block(0, -1, 0)", false, ProgramType.QUERY, 0));
+        assertTrue(e.getMessage().contains("LV1"), e.getMessage());
+        assertEquals(Set.of(ApiSpec.WORLD_BLOCK), ScriptCompiler.scanApis("world.block(0, -1, 0)", false, ProgramType.QUERY, 1));
+        assertThrows(InstallException.class, () ->
+                ScriptCompiler.scanApis("world.fly()", false, ProgramType.RESIDENT, 11));
+    }
+
+    @Test
+    void kernelsMayReadTheClockAndTheSkyOnly() throws Exception {
+        assertEquals(Set.of(ApiSpec.WORLD_TIME, ApiSpec.WORLD_DAY, ApiSpec.WORLD_WEATHER),
+                ScriptCompiler.scanApis("local t = world.time()\nlocal d = world.day()\nlocal w = world.weather()", true, null, 0));
+        for (String call : new String[]{"world.light()", "world.biome()", "world.dimension()", "world.block(0, 0, 0)", "world.mobs()"}) {
+            assertThrows(InstallException.class, () -> ScriptCompiler.scanApis(call, true, null, 11), call);
+        }
+    }
 }

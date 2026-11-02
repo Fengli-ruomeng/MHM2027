@@ -29,10 +29,12 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.food.FoodData;
+import net.minecraft.world.item.ItemStack;
 
 /**
- * The Lua side of the first API set: {@code me} (your body), {@code sys} (your terminal),
- * plus {@code chance} and {@code print}.
+ * The Lua side of the API set: {@code me} (your body), {@code sys} (your terminal),
+ * {@code remote} (other gateways), {@code world} (what's around you), plus {@code chance}
+ * and {@code print}.
  *
  * Every call checks the gateway level again at runtime and charges its steps against the
  * caller's TOPS budget. Calls fail for in-game reasons (cooldown, not enough food) by
@@ -54,12 +56,15 @@ final class Apis {
         globals.rawset("me", me(terminal, host));
         globals.rawset("sys", sys(terminal, host));
         globals.rawset("remote", remote(terminal, host));
+        globals.rawset("world", world(terminal, host));
         bindCommon(globals, terminal, host);
     }
 
     static void bindKernel(LuaSandbox sandbox, Terminal terminal, Supplier<? extends ScriptHost> host) {
         LuaTable globals = sandbox.globals();
         globals.rawset("sys", sys(terminal, host::get));
+        // Only the clock and the sky are open to kernels; checkCallable refuses the rest.
+        globals.rawset("world", world(terminal, host::get));
         Access.bindDecisions(globals);
         bindCommon(globals, terminal, host::get);
     }
@@ -90,6 +95,16 @@ final class Apis {
                 varargsOf(valueOf(player.getX()), valueOf(player.getY()), valueOf(player.getZ())));
 
         api(me, ApiSpec.ME_LOOKING_AT, terminal, host, (player, args) -> Sight.lookingAt(player));
+        api(me, ApiSpec.ME_INVENTORY, terminal, host, (player, args) -> Senses.inventory(player));
+        api(me, ApiSpec.ME_HELD, terminal, host, (player, args) -> {
+            ItemStack held = player.getMainHandItem();
+            return held.isEmpty() ? Constants.NIL : Senses.item(held);
+        });
+        api(me, ApiSpec.ME_EFFECTS, terminal, host, (player, args) -> Senses.effects(player));
+        api(me, ApiSpec.ME_AIR, terminal, host, (player, args) ->
+                varargsOf(valueOf(WorldRules.airSeconds(player.getAirSupply())), valueOf(WorldRules.airSeconds(player.getMaxAirSupply()))));
+        api(me, ApiSpec.ME_XP, terminal, host, (player, args) ->
+                varargsOf(valueOf(player.experienceLevel), valueOf(player.experienceProgress)));
 
         api(me, ApiSpec.ME_SPEED_BOOST, terminal, host, (player, args) -> {
             double amount = range(args, 1, 0.05, 0.5);
@@ -401,6 +416,45 @@ final class Apis {
 
     // endregion
 
+    // region world
+
+    private static LuaTable world(Terminal terminal, Supplier<ScriptHost> host) {
+        LuaTable world = new LuaTable();
+        api(world, ApiSpec.WORLD_TIME, terminal, host, (player, args) -> Senses.clockTicks(player)
+                .<Varargs>map(ticks -> {
+                    int time = WorldRules.timeOfDay(ticks);
+                    return varargsOf(valueOf(time), valueOf(WorldRules.isNight(time)));
+                })
+                .orElse(Constants.NIL));
+        api(world, ApiSpec.WORLD_DAY, terminal, host, (player, args) -> Senses.clockTicks(player)
+                .<Varargs>map(ticks -> valueOf((double) WorldRules.day(ticks)))
+                .orElse(Constants.NIL));
+        api(world, ApiSpec.WORLD_WEATHER, terminal, host, (player, args) -> valueOf(Senses.weather(player)));
+        api(world, ApiSpec.WORLD_LIGHT, terminal, host, (player, args) ->
+                varargsOf(valueOf(Senses.light(player)), valueOf(Senses.blockLight(player))));
+        api(world, ApiSpec.WORLD_BIOME, terminal, host, (player, args) -> valueOf(Senses.biome(player)));
+        api(world, ApiSpec.WORLD_DIMENSION, terminal, host, (player, args) -> valueOf(Senses.dimension(player)));
+        api(world, ApiSpec.WORLD_BLOCK, terminal, host, (player, args) ->
+                valueOf(Senses.block(player, offset(args, 1), offset(args, 2), offset(args, 3))));
+        api(world, ApiSpec.WORLD_MOBS, terminal, host, (player, args) -> {
+            int range = Terminal.data(player).tier().scanRange();
+            double radius = Math.clamp(args.arg(1).optDouble(range), 1, range);
+            return Senses.mobs(player, radius, Gateways.MAX_SCAN_RESULTS);
+        });
+        return world;
+    }
+
+    /** A world.block offset: a whole number of blocks, within reach. */
+    private static int offset(Varargs args, int index) throws LuaError {
+        double value = args.arg(index).checkDouble();
+        if (!WorldRules.inReach(value)) {
+            throw new LuaError("argument #" + index + " must be a whole number from -" + WorldRules.BLOCK_REACH + " to " + WorldRules.BLOCK_REACH);
+        }
+        return (int) value;
+    }
+
+    // endregion
+
     // region Plumbing
 
     @FunctionalInterface
@@ -420,6 +474,10 @@ final class Apis {
     private static ServerPlayer checkCallable(ApiSpec spec, Terminal terminal, ScriptHost caller) throws LuaError {
         if (caller == null || !caller.isActive()) {
             throw new LuaError(spec.id() + " can't be called while the script is loading");
+        }
+        // Install refuses these too, but a table can be reached by other names than the one it was scanned under.
+        if (caller.isKernel() && !spec.kernel()) {
+            throw new LuaError(spec.id() + " can't be used in a kernel");
         }
         ServerPlayer player = player(terminal);
         GatewayTier tier = Terminal.data(player).tier();

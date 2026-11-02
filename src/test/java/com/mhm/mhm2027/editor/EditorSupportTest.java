@@ -27,6 +27,14 @@ class EditorSupportTest {
     }
 
     @Test
+    void highlightsWorldCallsAsApis() {
+        String line = "if world.block(0, -1, 0) == \"minecraft:lava\" then";
+        List<Span> spans = LuaHighlighter.highlight(List.of(line)).getFirst();
+        assertEquals(Kind.API, kindAt(spans, line.indexOf("world")));
+        assertEquals(Kind.API, kindAt(spans, line.indexOf("block")));
+    }
+
+    @Test
     void stringsHideKeywordsInside() {
         String line = "sys.log(\"if then end\")";
         List<Span> spans = LuaHighlighter.highlight(List.of(line)).getFirst();
@@ -64,11 +72,18 @@ class EditorSupportTest {
         assertEquals(List.of("remote.inspect(target)"),
                 Completions.suggest("local r = remote.ins", false).stream().map(Completions.Suggestion::label).toList());
         assertTrue(Completions.suggest("remote.", true).isEmpty(), "remote.* is program-only");
+        assertEquals(List.of("world.block(dx, dy, dz)"),
+                Completions.suggest("local b = world.bl", false).stream().map(Completions.Suggestion::label).toList());
+        assertEquals(List.of("me.inventory()"),
+                Completions.suggest("me.inv", false).stream().map(Completions.Suggestion::label).toList());
     }
 
     @Test
     void kernelsOnlySeeKernelApisAndHooks() {
         assertTrue(Completions.suggest("me.", true).isEmpty(), "me.* is program-only");
+        assertEquals(List.of("world.time()", "world.day()", "world.weather()"),
+                Completions.suggest("world.", true).stream().map(Completions.Suggestion::label).toList(),
+                "kernels may read the clock and the sky, nothing else around you");
         assertEquals(List.of("on_panic()"), Completions.suggest("function on_pa", true).stream().map(Completions.Suggestion::label).toList());
         assertTrue(Completions.suggest("function on_", false).stream().anyMatch(s -> s.label().equals("on_hit_taken()")));
     }

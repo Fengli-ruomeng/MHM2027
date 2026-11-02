@@ -27,7 +27,7 @@ final class ScriptCompiler {
     /** Top-level code only defines things; real work belongs in event handlers. */
     private static final int SETUP_INSTRUCTIONS = 20_000;
 
-    private static final Pattern API_REFERENCE = Pattern.compile("\\b(me|sys|remote)\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)");
+    private static final Pattern API_REFERENCE = Pattern.compile("\\b(" + String.join("|", ApiSpec.NAMESPACES) + ")\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)");
     private static final Pattern LONG_COMMENT = Pattern.compile("--\\[(=*)\\[.*?]\\1]", Pattern.DOTALL);
     private static final Pattern LINE_COMMENT = Pattern.compile("--[^\\n]*");
 

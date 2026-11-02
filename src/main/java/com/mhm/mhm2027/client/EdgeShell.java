@@ -41,7 +41,7 @@ public final class EdgeShell {
     private static final long STAGGER_MILLIS = 25;
     /** Prose wraps at this many characters until the screen says how wide the terminal is. */
     private static final int DEFAULT_COLUMNS = 60;
-    private static final List<String> NAMESPACES = List.of("me", "sys", "remote");
+    private static final List<String> NAMESPACES = ApiSpec.NAMESPACES;
     /** What a new file may be called: the same rule as the editor's name prompt and the server. */
     private static final Pattern NEW_NAME = Pattern.compile("[A-Za-z0-9_\\-]{1,32}");
 

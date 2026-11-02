@@ -3,6 +3,7 @@ package com.mhm.mhm2027.terminal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -24,6 +25,12 @@ public record ApiSpec(String id, String params, boolean kernel, int minLevel, in
     /** One step costs this many instructions of budget. */
     public static final int STEP_INSTRUCTIONS = 10;
 
+    /**
+     * The tables scripts see, in the order the wiki and {@code man} list them. The install
+     * check, the editor and the shell all recognise API calls by these names.
+     */
+    public static final List<String> NAMESPACES = List.of("me", "sys", "remote", "world");
+
     private static final Map<String, ApiSpec> REGISTRY = new LinkedHashMap<>();
 
     // me: your own body. Program-only.
@@ -32,6 +39,11 @@ public record ApiSpec(String id, String params, boolean kernel, int minLevel, in
     public static final ApiSpec ME_HUNGER = read("me.hunger");
     public static final ApiSpec ME_POS = read("me.pos");
     public static final ApiSpec ME_LOOKING_AT = register(new ApiSpec("me.looking_at", "", false, 0, 2, 2, 0, false));
+    public static final ApiSpec ME_INVENTORY = register(new ApiSpec("me.inventory", "", false, 0, 3, 2, 0, false));
+    public static final ApiSpec ME_HELD = read("me.held");
+    public static final ApiSpec ME_EFFECTS = register(new ApiSpec("me.effects", "", false, 0, 2, 1, 0, false));
+    public static final ApiSpec ME_AIR = read("me.air");
+    public static final ApiSpec ME_XP = read("me.xp");
     public static final ApiSpec ME_SPEED_BOOST = register(new ApiSpec("me.speed_boost", "amount, seconds", false, 1, 2, 4, 8, true));
     public static final ApiSpec ME_JUMP_BOOST = register(new ApiSpec("me.jump_boost", "amount, seconds", false, 2, 2, 4, 8, true));
     public static final ApiSpec ME_FALL_GUARD = register(new ApiSpec("me.fall_guard", "seconds", false, 2, 2, 4, 10, true));
@@ -67,12 +79,28 @@ public record ApiSpec(String id, String params, boolean kernel, int minLevel, in
     public static final ApiSpec SYS_END_SESSION = register(new ApiSpec("sys.end_session", "who", true, 0, 3, 1, 0, false));
     public static final ApiSpec SYS_REBOOT = register(new ApiSpec("sys.reboot", "", true, 0, 2, 1, 0, false));
 
+    // world: what's around you. Read-only, so nothing here needs a socket. Kernel hooks may read
+    // the clock and the sky; the rest is about your surroundings and stays program-only, like me.
+    public static final ApiSpec WORLD_TIME = skyRead("world.time");
+    public static final ApiSpec WORLD_DAY = skyRead("world.day");
+    public static final ApiSpec WORLD_WEATHER = skyRead("world.weather");
+    public static final ApiSpec WORLD_LIGHT = read("world.light");
+    public static final ApiSpec WORLD_BIOME = read("world.biome");
+    public static final ApiSpec WORLD_DIMENSION = read("world.dimension");
+    public static final ApiSpec WORLD_BLOCK = register(new ApiSpec("world.block", "dx, dy, dz", false, 1, 2, 2, 0, false));
+    public static final ApiSpec WORLD_MOBS = register(new ApiSpec("world.mobs", "radius", false, 0, 8, 4, 0, false));
+
     private static ApiSpec read(String id) {
         return register(new ApiSpec(id, "", false, 0, 1, 1, 0, false));
     }
 
     private static ApiSpec sysRead(String id) {
         return register(new ApiSpec(id, "", true, 0, 1, 0, 0, false));
+    }
+
+    /** A world read that kernel hooks may make too. */
+    private static ApiSpec skyRead(String id) {
+        return register(new ApiSpec(id, "", true, 0, 1, 1, 0, false));
     }
 
     private static ApiSpec register(ApiSpec spec) {
