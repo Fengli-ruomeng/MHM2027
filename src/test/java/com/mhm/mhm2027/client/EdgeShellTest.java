@@ -20,7 +20,39 @@ class EdgeShellTest {
                 List.of(new EdgeShell.Proc("Watcher", "Watcher", "resident", "idle", 4, 1)),
                 List.of(new EdgeShell.Flaw("memory", "critical", "verify = skip", false)),
                 List.of(new EdgeShell.Socket(false, "preset:mhm2027:adrenaline_shot", "Adrenaline Shot"), new EdgeShell.Socket(true, "", "")),
-                List.of("Watcher", "Breach"));
+                List.of("Watcher", "Breach"),
+                List.of("run Breach", "", "", "", "", "", "", ""));
+    }
+
+    @Test
+    void wheelSetsAndClearsSlots() {
+        EdgeShell shell = new EdgeShell();
+        shell.submit("wheel set 3 run Breach", data(), 0);
+        shell.submit("wheel rm 1", data(), 0);
+        assertEquals(List.of(new EdgeShell.Request("WHEEL_SET", "3 run Breach"), new EdgeShell.Request("WHEEL_SET", "1")), shell.drain());
+
+        shell.submit("wheel set 9 run Breach", data(), 0);
+        shell.submit("wheel set 2 wheel ls", data(), 0);
+        shell.submit("wheel set 2", data(), 0);
+        assertTrue(shell.drain().isEmpty(), "bad slots, nested wheels and empty shortcuts are refused");
+    }
+
+    @Test
+    void wheelListsItsSlots() {
+        EdgeShell shell = new EdgeShell();
+        List<EdgeShell.Line> printed = shell.submit("wheel", data(), 0);
+        assertTrue(printed.getFirst().text().endsWith("wheel"), "the echoed prompt comes first");
+        assertTrue(printed.stream().anyMatch(line -> line.text().contains("1  run Breach")));
+        assertTrue(printed.stream().anyMatch(line -> line.text().contains("8  -")));
+    }
+
+    @Test
+    void submitReturnsOnlyItsOwnLines() {
+        EdgeShell shell = new EdgeShell();
+        shell.submit("help", data(), 0);
+        List<EdgeShell.Line> printed = shell.submit("run Nothing", data(), 0);
+        assertEquals(2, printed.size());
+        assertTrue(printed.get(1).text().contains("no program called Nothing"));
     }
 
     @Test

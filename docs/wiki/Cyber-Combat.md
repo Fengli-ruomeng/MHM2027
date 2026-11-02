@@ -10,6 +10,8 @@ Gateway mobs follow exactly the same rules as players, in both directions. Null 
 - `remote.scan(radius)`: up to 8 gateways around you, nearest first.
 - `remote.inspect(t)`: waits about **1 second**, then tells you the target's name, level and **flaws**. Your kernel's `rate_limit` makes this faster or slower. The target's programs hear `on_scanned`, so they know you looked.
 
+Whatever you inspect, the Lens remembers for a minute: look at it and its flaws are beside the brackets (see [Getting Started](Getting-Started#1-read-the-hud)).
+
 The [Scanner](Items#kuyoz-mech) item does the same inspect by hand, without a program. To look around without a program, type `scan` in Edge's terminal: it lists what `remote.scan` would find (see [The Edge Desktop](Control-Panel#commands)).
 
 ## 2. Break in: access attempts

@@ -47,6 +47,10 @@ public class Mhm2027Client {
     public static final KeyMapping LENS_DETAILS = new KeyMapping("key.mhm2027.lens_details", KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_LEFT_ALT, CATEGORY);
 
+    /** Held: the quick wheel. Point at a shortcut and let go, or press 1-8. V by default. */
+    public static final KeyMapping QUICK_WHEEL = new KeyMapping("key.mhm2027.quick_wheel", KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, CATEGORY);
+
     public Mhm2027Client(ModContainer container) {
         // Allows NeoForge to create a config screen for this mod's configs.
         container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
@@ -63,6 +67,7 @@ public class Mhm2027Client {
         event.registerCategory(CATEGORY);
         event.register(OPEN_PANEL);
         event.register(LENS_DETAILS);
+        event.register(QUICK_WHEEL);
     }
 
     @SubscribeEvent

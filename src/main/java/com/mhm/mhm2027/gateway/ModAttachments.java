@@ -53,4 +53,12 @@ public class ModAttachments {
             .serialize(Sockets.CODEC.fieldOf("sockets"))
             .copyOnDeath()
             .build());
+
+    /** The quick wheel's shortcuts. The owner's client draws the wheel from them. */
+    public static final Supplier<AttachmentType<Wheel>> WHEEL = ATTACHMENT_TYPES.register("wheel", () -> AttachmentType
+            .builder(() -> Wheel.EMPTY)
+            .serialize(Wheel.CODEC.fieldOf("slots"))
+            .sync((holder, to) -> holder == to, Wheel.STREAM_CODEC)
+            .copyOnDeath()
+            .build());
 }

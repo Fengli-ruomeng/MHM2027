@@ -73,6 +73,7 @@ public class ScannerItem extends KuyozItem {
 
     /** A card: who it is, its level and distance, then its flaws. */
     private static void report(ServerPlayer player, LivingEntity target) {
+        Terminals.existing(player).ifPresent(terminal -> terminal.remember(target));
         GatewayData data = Gateways.of(target);
         int level = data == null ? -1 : data.level();
         Component title = Component.translatable("message.mhm2027.scanner.card", target.getName(), level, Math.round(target.distanceTo(player)));

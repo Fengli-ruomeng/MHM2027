@@ -4,8 +4,10 @@ import static org.squiddev.cobalt.ValueFactory.valueOf;
 import static org.squiddev.cobalt.ValueFactory.varargsOf;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Supplier;
 
+import org.jspecify.annotations.Nullable;
 import org.squiddev.cobalt.Constants;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaTable;
@@ -339,6 +341,7 @@ final class Apis {
                 LivingEntity entity = EntityHandles.resolve(target, viewer, Terminal.data(viewer).tier().scanRange());
                 if (entity != null && Gateways.targetable(entity, viewer)) {
                     result = report(entity, viewer);
+                    terminal.remember(entity);
                     if (entity instanceof ServerPlayer scanned) {
                         Terminals.scanned(scanned, viewer);
                     }
@@ -387,6 +390,12 @@ final class Apis {
         public String detail() {
             EntityHandles.Handle handle = EntityHandles.handleOf(target);
             return handle == null ? "" : handle.address();
+        }
+
+        @Override
+        public @Nullable UUID target() {
+            EntityHandles.Handle handle = EntityHandles.handleOf(target);
+            return handle == null ? null : handle.target();
         }
     }
 

@@ -8,6 +8,7 @@ import org.jspecify.annotations.Nullable;
 import com.mhm.mhm2027.hud.HudBoot;
 import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.hud.HudState;
+import com.mhm.mhm2027.hud.HudTargets;
 import com.mhm.mhm2027.station.FlashStationBlockEntity;
 import com.mhm.mhm2027.terminal.Terminal;
 
@@ -29,6 +30,8 @@ public final class HudFeed {
     private static @Nullable Banner banner;
     private static HudState state = HudState.OFFLINE;
     private static long stateAt;
+    private static HudTargets targets = HudTargets.NONE;
+    private static long targetsAt;
     private static float glitchLevel;
     private static long glitchAt;
     private static @Nullable HudBoot boot;
@@ -58,6 +61,26 @@ public final class HudFeed {
     static void accept(HudState next) {
         state = next;
         stateAt = Util.getMillis();
+    }
+
+    static void accept(HudTargets next) {
+        targets = next;
+        targetsAt = Util.getMillis();
+    }
+
+    /** The gateways in scan range, for the target callout. */
+    static HudTargets targets() {
+        return targets;
+    }
+
+    /** Ticks since the targets arrived, so their timers count down in between. */
+    static double targetsAge(long now) {
+        return (now - targetsAt) / 50.0;
+    }
+
+    /** Ticks since the state arrived, so the task list counts down in between. */
+    static double stateAge(long now) {
+        return (now - stateAt) / 50.0;
     }
 
     /** The gateway is booting: the boot screen runs for as long as the server said, and starts with a glitch. */
@@ -126,6 +149,7 @@ public final class HudFeed {
         BANNERS.clear();
         banner = null;
         state = HudState.OFFLINE;
+        targets = HudTargets.NONE;
         glitchLevel = 0;
         boot = null;
     }

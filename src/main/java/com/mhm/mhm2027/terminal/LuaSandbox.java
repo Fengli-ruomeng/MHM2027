@@ -1,5 +1,8 @@
 package com.mhm.mhm2027.terminal;
 
+import java.util.UUID;
+
+import org.jspecify.annotations.Nullable;
 import org.squiddev.cobalt.Constants;
 import org.squiddev.cobalt.LuaError;
 import org.squiddev.cobalt.LuaState;
@@ -149,6 +152,11 @@ public final class LuaSandbox {
         default String detail() {
             return "";
         }
+
+        /** The entity it's aimed at, for the target callout, or null. */
+        default @Nullable UUID target() {
+            return null;
+        }
     }
 
     @FunctionalInterface
@@ -178,10 +186,22 @@ public final class LuaSandbox {
 
     /** Waits a number of ticks. Behind sys.sleep. */
     public static final class Timer implements Awaitable {
+        private final int totalTicks;
         private int ticksLeft;
 
         public Timer(double seconds) {
             ticksLeft = Math.max(1, (int) Math.round(seconds * 20));
+            totalTicks = ticksLeft;
+        }
+
+        @Override
+        public int totalTicks() {
+            return totalTicks;
+        }
+
+        @Override
+        public int ticksLeft() {
+            return Math.max(0, ticksLeft);
         }
 
         @Override

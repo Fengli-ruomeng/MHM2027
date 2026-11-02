@@ -3,6 +3,8 @@ package com.mhm.mhm2027.terminal;
 import static org.squiddev.cobalt.ValueFactory.valueOf;
 import static org.squiddev.cobalt.ValueFactory.varargsOf;
 
+import java.util.UUID;
+
 import org.jspecify.annotations.Nullable;
 import org.squiddev.cobalt.Constants;
 import org.squiddev.cobalt.LuaError;
@@ -222,6 +224,10 @@ public final class Access {
             if (escalate && (session == null || !session.open)) {
                 return fail("closed");
             }
+            if (defender != null) {
+                defender.incoming(this, Addresses.of(entity.getUUID()), (escalate ? "escalating" : "access attempt") + " · " + method,
+                        totalTicks, ticksLeft);
+            }
             if (--ticksLeft > 0) {
                 return false;
             }
@@ -270,6 +276,11 @@ public final class Access {
         public String detail() {
             String address = Addresses.of(target.getUUID());
             return escalate ? address : address + " · " + method;
+        }
+
+        @Override
+        public UUID target() {
+            return target.getUUID();
         }
     }
 

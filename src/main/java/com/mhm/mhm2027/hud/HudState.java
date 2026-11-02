@@ -17,8 +17,9 @@ import net.minecraft.resources.Identifier;
  *
  * @param flash how far a firmware flash has got, 0 to 1; -1 when there is none
  * @param power off, booting or on: the HUD hides itself while the gateway is off
+ * @param tasks everything that takes time, most urgent first, for the task list
  */
-public record HudState(List<Slot> slots, float flash, Terminal.Power power) implements CustomPacketPayload {
+public record HudState(List<Slot> slots, float flash, Terminal.Power power, List<Task> tasks) implements CustomPacketPayload {
     /**
      * One socket.
      *
@@ -38,15 +39,45 @@ public record HudState(List<Slot> slots, float flash, Terminal.Power power) impl
         }
     }
 
-    public static final HudState EMPTY = new HudState(List.of(), -1, Terminal.Power.ON);
+    /**
+     * Something that takes time: a program waiting on a call, an attempt on you, a session, a
+     * cooldown, Overload Heat. The client counts the ones that count down between updates.
+     *
+     * @param label  the program, the API or the other gateway's address
+     * @param detail a few words on what's happening
+     * @param total  the whole span in ticks, or 0 when there's no bar; for Overload, 100 (max Heat)
+     * @param left   ticks still to go; for Overload, 100 minus the Heat
+     */
+    public record Task(Kind kind, String label, String detail, int total, int left) {
+        /** In the order the list shows them: what you may need to act on first. */
+        public enum Kind {
+            INCOMING, WAITING, SESSION, OVERLOAD, LOCKED, FLASH, COOLDOWN, BUSY, IDLE;
+
+            /** Whether {@code left} is a time the client can count down. */
+            public boolean countsDown() {
+                return this != OVERLOAD && this != FLASH && this != BUSY && this != IDLE;
+            }
+        }
+
+        static final StreamCodec<RegistryFriendlyByteBuf, Task> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.idMapper(id -> Kind.values()[id], Kind::ordinal), Task::kind,
+                ByteBufCodecs.STRING_UTF8, Task::label,
+                ByteBufCodecs.STRING_UTF8, Task::detail,
+                ByteBufCodecs.VAR_INT, Task::total,
+                ByteBufCodecs.VAR_INT, Task::left,
+                Task::new);
+    }
+
+    public static final HudState EMPTY = new HudState(List.of(), -1, Terminal.Power.ON, List.of());
     /** What the client assumes before the server says otherwise: a gateway starts off. */
-    public static final HudState OFFLINE = new HudState(List.of(), -1, Terminal.Power.OFF);
+    public static final HudState OFFLINE = new HudState(List.of(), -1, Terminal.Power.OFF, List.of());
     public static final Type<HudState> TYPE = new Type<>(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "hud_state"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, HudState> STREAM_CODEC = StreamCodec.composite(
             Slot.STREAM_CODEC.apply(ByteBufCodecs.list()), HudState::slots,
             ByteBufCodecs.FLOAT, HudState::flash,
             ByteBufCodecs.idMapper(id -> Terminal.Power.values()[id], Terminal.Power::ordinal), HudState::power,
+            Task.STREAM_CODEC.apply(ByteBufCodecs.list()), HudState::tasks,
             HudState::new);
 
     @Override

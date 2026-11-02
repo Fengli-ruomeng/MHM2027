@@ -33,7 +33,11 @@ public record PanelRequest(Action action, String argument) implements CustomPack
         /** The boot screen was closed before the boot finished. */
         LOOK_AWAY,
         /** Edge's scan: list the gateways around you. The argument is a radius, or empty for your full range. */
-        SCAN
+        SCAN,
+        /** Sets a quick wheel slot: "3 run Breach", or just "3" to clear it. */
+        WHEEL_SET,
+        /** The quick wheel opened: describe its slots. */
+        WHEEL_INFO
     }
 
     public static final Type<PanelRequest> TYPE = new Type<>(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "panel_request"));

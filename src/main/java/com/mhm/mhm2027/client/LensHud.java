@@ -130,6 +130,8 @@ public class LensHud implements GuiLayer {
             slots(graphics, font, width, height);
         }
         if (boot < 0 || boot >= CARDS_RETURN) {
+            TargetCallout.draw(graphics, font, minecraft, width, height, deltaTracker.getGameTimeDeltaPartialTick(true), now);
+            TaskList.draw(graphics, font, width, height, now);
             flashCode(graphics, font, width, height, now);
             cards(graphics, font, player, width, now, glitch, jitter);
             if (ClientConfig.BANNERS.get()) {
@@ -142,6 +144,7 @@ public class LensHud implements GuiLayer {
         if (glitch > 0.02f) {
             glitchOverlay(graphics, font, width, height, now, glitch);
         }
+        QuickWheel.draw(graphics, font, minecraft, width, height, now);
     }
 
     // region Vital bars

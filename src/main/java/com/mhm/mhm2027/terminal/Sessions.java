@@ -122,6 +122,11 @@ public final class Sessions {
         return session;
     }
 
+    /** The open sessions an attacker holds. */
+    static List<Session> heldBy(UUID attacker) {
+        return OPEN.stream().filter(session -> session.open && session.attacker.equals(attacker)).toList();
+    }
+
     static @Nullable Session find(UUID attacker, UUID target) {
         for (Session session : OPEN) {
             if (session.open && session.attacker.equals(attacker) && session.target.equals(target)) {

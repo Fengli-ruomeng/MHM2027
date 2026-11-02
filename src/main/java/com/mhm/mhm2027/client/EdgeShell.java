@@ -34,6 +34,9 @@ public final class EdgeShell {
 
     private static final int MAX_LINES = 400;
     private static final int MAX_HISTORY = 50;
+    /** The quick wheel's slots, and how long a shortcut may be; the server holds the same limits. */
+    static final int WHEEL_SLOTS = 8;
+    private static final int MAX_SHORTCUT = 64;
     /** Lines printed together appear one after another, this far apart. */
     private static final long STAGGER_MILLIS = 25;
     /** Prose wraps at this many characters until the screen says how wide the terminal is. */
@@ -54,6 +57,7 @@ public final class EdgeShell {
             new String[]{"status", "your gateway at a glance"},
             new String[]{"flaws", "your flaws, and the ones you're close to"},
             new String[]{"scan", "[radius]  gateways around you"},
+            new String[]{"wheel", "[ls | set | rm]  the quick wheel's shortcuts (hold V)"},
             new String[]{"socket", "[ls | add | rm]  sockets (change them at a Flash Station)"},
             new String[]{"kernel", "[ls | install]  your kernel (install at a Flash Station)"},
             new String[]{"edit", "[file]  open the editor"},
@@ -123,7 +127,8 @@ public final class EdgeShell {
     }
 
     public record Data(String user, String address, boolean atStation, Status status, Kernel kernel,
-                       List<Script> scripts, List<Proc> programs, List<Flaw> flaws, List<Socket> sockets, List<String> outputs) {
+                       List<Script> scripts, List<Proc> programs, List<Flaw> flaws, List<Socket> sockets, List<String> outputs,
+                       List<String> wheel) {
     }
 
     /** One gateway a scan found. {@code level} is -1 when it can't be read. */
@@ -138,6 +143,8 @@ public final class EdgeShell {
     private int historyIndex = -1;
     private long printAt;
     private int columns = DEFAULT_COLUMNS;
+    /** Lines printed since the shell started, so submit can tell which are its own. */
+    private long printed;
 
     public List<Line> lines() {
         return lines;
@@ -173,7 +180,15 @@ public final class EdgeShell {
 
     // region Running commands
 
-    public void submit(String input, Data data, long now) {
+    /** Runs a command line. Returns the lines it printed, the echoed prompt first. */
+    public List<Line> submit(String input, Data data, long now) {
+        long start = printed;
+        execute(input, data, now);
+        int count = (int) Math.min(printed - start, lines.size());
+        return List.copyOf(lines.subList(lines.size() - count, lines.size()));
+    }
+
+    private void execute(String input, Data data, long now) {
         printAt = now;
         String line = input.strip();
         print(Seg.of(prompt(data), CYAN), Seg.of(line, TEXT));
@@ -206,6 +221,7 @@ public final class EdgeShell {
             case "status" -> status(data);
             case "flaws" -> flaws(data);
             case "scan" -> scan(rest);
+            case "wheel" -> wheel(data, rest);
             case "socket" -> socket(data, rest);
             case "kernel" -> kernel(data, rest);
             case "man" -> man(data, rest);
@@ -417,6 +433,62 @@ public final class EdgeShell {
                 }
             }
             default -> error("kernel: use kernel, kernel ls or kernel install <name>");
+        }
+    }
+
+    /**
+     * wheel: the quick wheel's eight shortcuts. Any command can go in a slot; hold V and point
+     * at it, or hold V and press its number.
+     */
+    private void wheel(Data data, String rest) {
+        int space = rest.indexOf(' ');
+        String sub = (space < 0 ? rest : rest.substring(0, space)).toLowerCase(Locale.ROOT);
+        String args = space < 0 ? "" : rest.substring(space + 1).strip();
+        switch (sub) {
+            case "", "ls" -> {
+                print(Seg.of("QUICK WHEEL", TEXT), Seg.of(" · hold V and point, or hold V and press 1-8", DIM));
+                for (int i = 0; i < data.wheel().size(); i++) {
+                    String command = data.wheel().get(i);
+                    print(Seg.of("  " + (i + 1) + "  ", GREY), command.isEmpty() ? Seg.of("-", GREY) : Seg.fill(command, CYAN, command));
+                }
+                print(Seg.of("  ", TEXT), Seg.fill("wheel set", CYAN, "wheel set "), Seg.of(" <1-8> <command>  ·  ", DIM),
+                        Seg.fill("wheel rm", CYAN, "wheel rm "), Seg.of(" <1-8>", DIM));
+            }
+            case "set" -> {
+                int split = args.indexOf(' ');
+                int slot = wheelSlot(split < 0 ? args : args.substring(0, split));
+                String command = split < 0 ? "" : args.substring(split + 1).strip();
+                if (slot < 0) {
+                    error("wheel set: which slot? 1 to " + WHEEL_SLOTS + ", such as wheel set 1 run Breach");
+                } else if (command.isEmpty()) {
+                    error("wheel set: what should slot " + slot + " do? Such as wheel set " + slot + " run Breach");
+                } else if (command.toLowerCase(Locale.ROOT).startsWith("wheel")) {
+                    error("wheel set: a shortcut can't change the wheel");
+                } else if (command.length() > MAX_SHORTCUT) {
+                    error("wheel set: a shortcut is at most " + MAX_SHORTCUT + " characters");
+                } else {
+                    requests.add(new Request("WHEEL_SET", slot + " " + command));
+                }
+            }
+            case "rm" -> {
+                int slot = wheelSlot(args);
+                if (slot < 0) {
+                    error("wheel rm: which slot? 1 to " + WHEEL_SLOTS);
+                } else {
+                    requests.add(new Request("WHEEL_SET", String.valueOf(slot)));
+                }
+            }
+            default -> error("wheel: try wheel ls, wheel set <1-8> <command> or wheel rm <1-8>");
+        }
+    }
+
+    /** A wheel slot number, 1 to 8, or -1. */
+    private static int wheelSlot(String text) {
+        try {
+            int slot = Integer.parseInt(text.strip());
+            return slot >= 1 && slot <= WHEEL_SLOTS ? slot : -1;
+        } catch (NumberFormatException e) {
+            return -1;
         }
     }
 
@@ -691,6 +763,7 @@ public final class EdgeShell {
             case "edit", "burn", "cat" -> data.scripts().stream().filter(each -> !each.preset()).map(Script::name).toList();
             case "man" -> manTopics();
             case "socket", "kernel" -> null;
+            case "wheel" -> List.of("ls", "set", "rm");
             default -> List.of();
         };
         if (pool == null) {
@@ -787,6 +860,7 @@ public final class EdgeShell {
 
     private void print(List<Seg> segs) {
         lines.add(new Line(List.copyOf(segs), printAt));
+        printed++;
         printAt += STAGGER_MILLIS;
         while (lines.size() > MAX_LINES) {
             lines.removeFirst();

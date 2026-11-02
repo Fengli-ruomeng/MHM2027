@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -14,6 +15,7 @@ import com.mhm.mhm2027.Mhm2027;
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.gateway.Sockets;
+import com.mhm.mhm2027.gateway.Wheel;
 import com.mhm.mhm2027.hud.Hud;
 import com.mhm.mhm2027.item.ChipActions;
 import com.mhm.mhm2027.station.FlashStationBlock;
@@ -26,7 +28,9 @@ import com.mhm.mhm2027.terminal.KernelSettings;
 import com.mhm.mhm2027.terminal.LuaSandbox;
 import com.mhm.mhm2027.terminal.PresetRegistry;
 import com.mhm.mhm2027.terminal.Program;
+import com.mhm.mhm2027.terminal.ScriptAnalyzer;
 import com.mhm.mhm2027.terminal.ScriptStore;
+import com.mhm.mhm2027.terminal.ScriptSummary;
 import com.mhm.mhm2027.terminal.Terminal;
 import com.mhm.mhm2027.terminal.Terminals;
 
@@ -56,6 +60,12 @@ public final class PanelService {
     /** Edge's scan takes as long as an inspection would (rate_limit speeds it up), so it can't be spammed. */
     private static final int SCAN_BASE_TICKS = 20;
     private static final Map<UUID, Integer> LAST_SCAN = new HashMap<>();
+    /** Describing the wheel reads and checks up to eight scripts, so a burst of opens reuses the last answer. */
+    private static final int WHEEL_INFO_TICKS = 20;
+    private static final Map<UUID, WheelAnswer> LAST_WHEEL_INFO = new HashMap<>();
+
+    private record WheelAnswer(int tick, Wheel wheel, WheelInfo info) {
+    }
 
     private PanelService() {
     }
@@ -68,6 +78,7 @@ public final class PanelService {
         registrar.playToClient(PanelSnapshot.TYPE, PanelSnapshot.STREAM_CODEC);
         registrar.playToClient(PanelMessage.TYPE, PanelMessage.STREAM_CODEC);
         registrar.playToClient(ScanResult.TYPE, ScanResult.STREAM_CODEC);
+        registrar.playToClient(WheelInfo.TYPE, WheelInfo.STREAM_CODEC);
     }
 
     private static void handle(PanelRequest request, IPayloadContext context) {
@@ -97,6 +108,14 @@ public final class PanelService {
         }
         if (request.action() == PanelRequest.Action.SCAN) {
             scan(player, terminal, request.argument());
+            return;
+        }
+        if (request.action() == PanelRequest.Action.WHEEL_SET) {
+            setWheel(player, request.argument());
+            return;
+        }
+        if (request.action() == PanelRequest.Action.WHEEL_INFO) {
+            PacketDistributor.sendToPlayer(player, wheelInfo(player));
             return;
         }
         String name = request.argument();
@@ -171,12 +190,89 @@ public final class PanelService {
     static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         WATCHERS.remove(event.getEntity().getUUID());
         LAST_SCAN.remove(event.getEntity().getUUID());
+        LAST_WHEEL_INFO.remove(event.getEntity().getUUID());
     }
 
     @SubscribeEvent
     static void onServerStopped(ServerStoppedEvent event) {
         WATCHERS.clear();
         LAST_SCAN.clear();
+        LAST_WHEEL_INFO.clear();
+    }
+
+    /** "3 run Breach" puts a shortcut in slot 3; "3" alone clears it. Allowed anywhere, even while off. */
+    private static void setWheel(ServerPlayer player, String argument) {
+        String[] parts = argument.strip().split(" ", 2);
+        int slot;
+        try {
+            slot = Integer.parseInt(parts[0]);
+        } catch (NumberFormatException e) {
+            slot = 0;
+        }
+        String command = parts.length > 1 ? parts[1].strip() : "";
+        String problem = Terminals.isNull(player) ? "wheel: a Null gateway has no wheel"
+                : slot < 1 || slot > Wheel.SLOTS ? "wheel: the slots are 1 to " + Wheel.SLOTS
+                : command.length() > Wheel.MAX_COMMAND ? "wheel: a shortcut is at most " + Wheel.MAX_COMMAND + " characters" : null;
+        if (problem != null) {
+            PacketDistributor.sendToPlayer(player, new PanelMessage(false, Component.literal(problem)));
+            return;
+        }
+        player.setData(ModAttachments.WHEEL, player.getData(ModAttachments.WHEEL).with(slot - 1, command));
+        player.syncData(ModAttachments.WHEEL);
+        PacketDistributor.sendToPlayer(player, new PanelMessage(true,
+                Component.literal(command.isEmpty() ? "wheel: slot " + slot + " cleared" : "wheel: slot " + slot + " set to " + command)));
+    }
+
+    /** A line on each wheel slot. Within a second of the last answer, the same wheel gets the same answer. */
+    private static WheelInfo wheelInfo(ServerPlayer player) {
+        Wheel wheel = player.getData(ModAttachments.WHEEL);
+        int now = player.level().getServer().getTickCount();
+        WheelAnswer last = LAST_WHEEL_INFO.get(player.getUUID());
+        if (last != null && last.wheel().equals(wheel) && now - last.tick() < WHEEL_INFO_TICKS) {
+            return last.info();
+        }
+        List<WheelInfo.Row> rows = new ArrayList<>();
+        for (String command : wheel.slots()) {
+            rows.add(describe(player, command));
+        }
+        WheelInfo info = new WheelInfo(List.copyOf(rows));
+        LAST_WHEEL_INFO.put(player.getUUID(), new WheelAnswer(now, wheel, info));
+        return info;
+    }
+
+    /** For "run X": a written preset by name, else one of the player's files, as the shell finds them. */
+    private static WheelInfo.Row describe(ServerPlayer player, String command) {
+        String[] words = command.strip().split(" ", 2);
+        if (words.length < 2 || !words[0].equalsIgnoreCase("run") || Terminals.isNull(player)) {
+            return WheelInfo.Row.NONE;
+        }
+        String wanted = words[1].strip();
+        if (wanted.toLowerCase(Locale.ROOT).endsWith(".lua")) {
+            wanted = wanted.substring(0, wanted.length() - 4);
+        }
+        for (Identifier id : player.getData(ModAttachments.PRESETS).ids()) {
+            PresetRegistry.Preset preset = PresetRegistry.get(id).orElse(null);
+            if (preset != null && !preset.isKernel()
+                    && (preset.summary().name().equalsIgnoreCase(wanted) || preset.terminalId().equalsIgnoreCase(wanted))) {
+                return new WheelInfo.Row(preset.summary().tops() + " TOPS", detail(preset.summary()), preset.description());
+            }
+        }
+        for (ScriptStore.Entry entry : ScriptStore.list(player.level().getServer(), player.getUUID())) {
+            if (entry.kind() == ScriptStore.Kind.PROGRAM && entry.name().equalsIgnoreCase(wanted)) {
+                try {
+                    String source = ScriptStore.read(player.level().getServer(), player.getUUID(), entry.name());
+                    ScriptSummary summary = ScriptAnalyzer.analyze(entry.name(), source, false).summary();
+                    return new WheelInfo.Row(summary.tops() + " TOPS", detail(summary), "");
+                } catch (InstallException e) {
+                    return new WheelInfo.Row("won't run", "won't run: " + e.getMessage(), "");
+                }
+            }
+        }
+        return new WheelInfo.Row("missing", "no program called " + wanted, "");
+    }
+
+    private static String detail(ScriptSummary summary) {
+        return summary.kind() + " · " + summary.tops() + " TOPS · " + summary.ramMb() + " MB";
     }
 
     /**

@@ -35,6 +35,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public final class Hud {
     private static final int STATE_INTERVAL_TICKS = 10;
     private static final Map<UUID, HudState> LAST_STATE = new HashMap<>();
+    private static final Map<UUID, HudTargets> LAST_TARGETS = new HashMap<>();
 
     private Hud() {
     }
@@ -46,6 +47,7 @@ public final class Hud {
         registrar.playToClient(HudEvent.TYPE, HudEvent.STREAM_CODEC);
         registrar.playToClient(HudState.TYPE, HudState.STREAM_CODEC);
         registrar.playToClient(HudBoot.TYPE, HudBoot.STREAM_CODEC);
+        registrar.playToClient(HudTargets.TYPE, HudTargets.STREAM_CODEC);
     }
 
     // region Events
@@ -112,6 +114,7 @@ public final class Hud {
     static void onPlayerTick(PlayerTickEvent.Post event) {
         if (event.getEntity() instanceof ServerPlayer player && player.tickCount % STATE_INTERVAL_TICKS == 0) {
             pushState(player);
+            pushTargets(player);
         }
     }
 
@@ -124,9 +127,20 @@ public final class Hud {
         }
     }
 
+    /** Sends the gateways in scan range, for the target callout, if anything about them changed. */
+    private static void pushTargets(ServerPlayer player) {
+        HudTargets targets = Terminals.isNull(player) ? HudTargets.NONE
+                : Terminals.existing(player).map(terminal -> terminal.targets(player)).orElse(HudTargets.NONE);
+        if (!targets.equals(LAST_TARGETS.get(player.getUUID()))) {
+            LAST_TARGETS.put(player.getUUID(), targets);
+            PacketDistributor.sendToPlayer(player, targets);
+        }
+    }
+
     @SubscribeEvent
     static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         LAST_STATE.remove(event.getEntity().getUUID());
+        LAST_TARGETS.remove(event.getEntity().getUUID());
     }
 
     private static HudState stateOf(ServerPlayer player) {
@@ -146,7 +160,7 @@ public final class Hud {
         for (String id : sockets.overload()) {
             slots.add(slot(terminal, id, true, heat));
         }
-        return new HudState(List.copyOf(slots), flash, terminal.power());
+        return new HudState(List.copyOf(slots), flash, terminal.power(), terminal.isOff() ? List.of() : terminal.tasks(player));
     }
 
     private static HudState.Slot slot(Terminal terminal, String id, boolean overload, float fill) {

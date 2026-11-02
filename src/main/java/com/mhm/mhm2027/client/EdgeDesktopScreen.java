@@ -18,9 +18,11 @@ import org.lwjgl.glfw.GLFW;
 import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
+import com.mhm.mhm2027.hud.HudEvent;
 import com.mhm.mhm2027.hud.HudState;
 import com.mhm.mhm2027.network.EditorFile;
 import com.mhm.mhm2027.network.EditorRequest;
+import com.mhm.mhm2027.network.PanelMessage;
 import com.mhm.mhm2027.network.PanelRequest;
 import com.mhm.mhm2027.network.PanelSnapshot;
 import com.mhm.mhm2027.network.ScanResult;
@@ -28,6 +30,7 @@ import com.mhm.mhm2027.terminal.Addresses;
 import com.mhm.mhm2027.terminal.ProgramOutputs;
 import com.mhm.mhm2027.terminal.ScriptStore;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
@@ -76,6 +79,9 @@ public class EdgeDesktopScreen extends Screen {
     private static final Map<String, Pending> pending = new HashMap<>();
     /** How far each program window has typed its output, by program name. */
     private static final Map<String, Typing> typing = new HashMap<>();
+    /** What a wheel shortcut asked for that needs Edge on screen: handled when Edge opens. */
+    private static final List<EdgeShell.Request> fromWheel = new ArrayList<>();
+    private static final Set<String> NEEDS_EDGE = Set.of("EDIT", "EDIT_NEW", "CAT", "WINDOW", "FOLDER");
 
     private final List<Hit> hits = new ArrayList<>();
     private List<Pill> pills = List.of();
@@ -100,6 +106,60 @@ public class EdgeDesktopScreen extends Screen {
         editor = new EdgeEditor();
         pending.clear();
         typing.clear();
+        fromWheel.clear();
+    }
+
+    /**
+     * A quick wheel shortcut, run as if typed in the terminal, so it lands in its history. What
+     * needs a window (edit, log, top, cat...) opens Edge. The server's answer comes back on a
+     * card; when nothing goes to the server, the shell's own answer does.
+     */
+    static void shortcut(String command, String tag) {
+        Minecraft minecraft = Minecraft.getInstance();
+        List<EdgeShell.Line> printed = shell.submit(command, data(minecraft), Util.getMillis());
+        boolean toServer = false;
+        boolean needsEdge = false;
+        for (EdgeShell.Request request : shell.drain()) {
+            if (NEEDS_EDGE.contains(request.action())) {
+                fromWheel.add(request);
+                needsEdge = true;
+            } else if (!request.action().equals("EXIT")) {
+                ClientPacketDistributor.sendToServer(new PanelRequest(PanelRequest.Action.valueOf(request.action()), request.argument()));
+                toServer = true;
+            }
+        }
+        if (needsEdge) {
+            minecraft.setScreen(new EdgeDesktopScreen());
+        } else if (!toServer && printed.size() > 1) {
+            // The first line is the echoed prompt.
+            List<EdgeShell.Line> answer = printed.subList(1, printed.size());
+            boolean refused = !answer.getFirst().segs().isEmpty() && answer.getFirst().segs().getFirst().color() == EdgeShell.PINK;
+            String more = answer.stream().skip(1).limit(3).map(EdgeShell.Line::text).map(String::strip).collect(Collectors.joining(" · "));
+            HudFeed.accept(new HudEvent(refused ? HudEvent.Kind.WARN : HudEvent.Kind.INFO, tag, Component.literal(answer.getFirst().text().strip()),
+                    Component.literal(more), "wheel", 0, false));
+        }
+    }
+
+    /** A server answer that arrives with Edge closed, such as a wheel shortcut's, goes on a card. */
+    static void answerWhileClosed(PanelMessage message) {
+        if (!(Minecraft.getInstance().screen instanceof EdgeDesktopScreen)) {
+            HudFeed.accept(new HudEvent(message.success() ? HudEvent.Kind.INFO : HudEvent.Kind.WARN, "EDGE", message.text(), Component.empty(),
+                    "edge-answer", 0, false));
+        }
+    }
+
+    /** A scan from the wheel: the nearest three on a card. False if Edge is open to print it instead. */
+    static boolean answerWhileClosed(ScanResult result) {
+        if (Minecraft.getInstance().screen instanceof EdgeDesktopScreen) {
+            return false;
+        }
+        String found = result.rows().stream().limit(3)
+                .map(row -> row.name() + " " + (row.level() < 0 ? "LV?" : "LV" + row.level()) + " " + Math.round(row.distance()) + "m")
+                .collect(Collectors.joining(" · "));
+        HudFeed.accept(new HudEvent(HudEvent.Kind.INFO, "EDGE // SCAN",
+                Component.literal(result.rows().size() + (result.rows().size() == 1 ? " gateway" : " gateways") + " within " + result.radius() + " blocks"),
+                Component.literal(found), "edge-scan", 0, false));
+        return true;
     }
 
     @Override
@@ -148,6 +208,11 @@ public class EdgeDesktopScreen extends Screen {
         }
         for (EdgeShell.Request request : shell.drain()) {
             handle(request, now);
+        }
+        if (!fromWheel.isEmpty()) {
+            List<EdgeShell.Request> queued = List.copyOf(fromWheel);
+            fromWheel.clear();
+            queued.forEach(request -> handle(request, now));
         }
         for (ScanResult result : PanelState.takeScans()) {
             shell.scanned(result.radius(), result.rows().stream().map(row -> new EdgeShell.Gateway(row.address(), row.name(), row.player(),
@@ -1261,6 +1326,10 @@ public class EdgeDesktopScreen extends Screen {
 
     /** The shell's view of the gateway: the panel snapshot plus the synced gateway data. */
     private EdgeShell.Data data() {
+        return data(minecraft);
+    }
+
+    private static EdgeShell.Data data(Minecraft minecraft) {
         LocalPlayer player = minecraft.player;
         PanelSnapshot snapshot = PanelState.snapshot();
         GatewayData data = player == null ? null : player.getData(ModAttachments.GATEWAY);
@@ -1280,7 +1349,8 @@ public class EdgeDesktopScreen extends Screen {
                 snapshot.programs().stream().map(row -> new EdgeShell.Proc(row.id(), row.name(), row.type(), row.state(), row.ramMb(), row.tops())).toList(),
                 snapshot.flaws().stream().map(row -> new EdgeShell.Flaw(row.className(), row.severity(), row.cause(), row.approaching())).toList(),
                 snapshot.sockets().stream().map(row -> new EdgeShell.Socket(row.overload(), row.id(), row.name())).toList(),
-                snapshot.outputs().stream().map(ProgramOutputs.Output::name).toList());
+                snapshot.outputs().stream().map(ProgramOutputs.Output::name).toList(),
+                player == null ? List.of() : player.getData(ModAttachments.WHEEL).slots());
     }
 
     /** In singleplayer the storage folder is on this computer, so Edge can open it. */

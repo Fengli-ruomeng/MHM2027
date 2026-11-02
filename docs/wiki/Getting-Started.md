@@ -33,6 +33,16 @@ Cards fade after a few seconds; attacks stay longest.
 
 **Banners.** The moments that matter most also get a warning banner: a headline over a strip of caution tape that reads **DANGER**, **WARNING** or **NOTICE**. You'll see **SYSTEM BREACH** when someone gets into your gateway, **KERNEL PANIC**, **OVERHEAT**, **EMP**, **FIRMWARE FLASH** and **LV ONLINE**, and **OUT OF MEMORY** for as long as it lasts. The details are on the card that comes with it.
 
+**Your target.** Look at a gateway within your scan range (16 + your level blocks) and brackets lock onto it, with a label beside them that grows as you learn more:
+
+- At first: its name, address, level and distance, the same as a free `scan` shows. Players are orange.
+- Once you've inspected it (with `remote.inspect` or the Scanner): its flaws, and how long ago you looked. This lasts a minute, since flaws such as `thermal` change mid-fight.
+- While your program is breaking in: **ACCESSING** with the time left and a bar. Once you're in: **SESSION**, user or root, and how long it has left.
+
+**Bottom right: tasks.** Anything that takes time: attempts on you (blinking), your programs waiting on a call (sleeping, inspecting, breaking in), your sessions, Overload Heat with a guess at when it crashes, reboots, locks and cooldowns. Idle programs shrink to one dim line.
+
+**The quick wheel.** Hold **V** (change it under Controls) and eight shortcuts appear around your crosshair. Point at one with the mouse and let go to run it, or press **1** to **8** while holding V to fire them at once, as many as you like. Right-click cancels. You keep walking while it's open; only the camera stops. Each shortcut is an Edge command, such as `run Breach`: set them with `wheel set` in Edge (see [The Edge Desktop](Control-Panel#the-quick-wheel)).
+
 **Glitches.** When you're hit or attacked, the HUD glitches and its text scrambles for a moment. You can turn the glitches down or off, and the banners off, under Mods → Edge → Config.
 
 The numbers behind all of this are in [Gateway and Resources](Gateway-and-Resources).

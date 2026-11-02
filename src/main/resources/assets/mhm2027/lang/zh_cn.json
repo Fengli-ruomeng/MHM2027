@@ -257,6 +257,7 @@
   "mhm2027.configuration.section.mhm2027.client.toml.title": "Edge 显示",
   "mhm2027.boot.title": "Edge",
   "mhm2027.hud.offline": "◆ EDGE 离线 · 按 %s 启动",
+  "key.mhm2027.quick_wheel": "快捷轮盘",
   "mhm2027.null.no_gateway": "没有网关：你是 Null。在刷写站刷入恢复固件即可重新获得",
   "message.mhm2027.kuyoz.off": "你的网关已关闭：按 G 启动",
   "mhm2027.flash.off": "请先启动网关：按 G",

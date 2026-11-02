@@ -69,6 +69,7 @@ In a narrow window, TYPE, PEAK and RES drop out, in that order. **×** at the en
 | `log [program]` | Open a program's window, or kernel.log |
 | `status` | Level, kernel, Buffer, RAM and Leak, TOPS, Heat and sockets |
 | `flaws` | Your flaws and their causes, and the ones you're close to |
+| `wheel` / `wheel set <1-8> <command>` / `wheel rm <1-8>` | The quick wheel's shortcuts (see [The quick wheel](#the-quick-wheel)) |
 | `scan [radius]` | The gateways around you, nearest first: address, name, level and distance. Up to 8, within your scan range (16 + your level blocks). Players are orange. You can scan about once a second; your kernel's `rate_limit` changes that, as it does for `remote.inspect`. Nobody is told you scanned |
 | `socket ls` / `socket add <program>` / `socket rm <program>` | Your sockets; changes need a Flash Station (see [Sockets and Overload](Sockets-and-Overload)) |
 | `kernel` / `kernel ls` / `kernel install <name>` | Your kernel; installs need a Flash Station (see [Kernels and Flaws](Kernels-and-Flaws)) |
@@ -80,6 +81,24 @@ In a narrow window, TYPE, PEAK and RES drop out, in that order. **×** at the en
 | `clear` | Clear the terminal |
 | `help` | List the commands |
 | `exit` | Close Edge |
+
+## The quick wheel
+
+The quick wheel holds eight shortcuts you fire without opening Edge. Hold **V** in game: point at one and let go, or press its number (1 to 8) while V is held. The numbers fire at once and the wheel stays open, so you can chain them; right-click cancels. You keep moving while it's open; only the camera stops so the mouse can point.
+
+A shortcut is any Edge command, run as if you'd typed it, so it lands in the terminal's history:
+
+```
+wheel set 1 run Breach
+wheel set 2 stop Overclock
+wheel set 3 scan 8
+wheel rm 3
+wheel
+```
+
+`wheel` alone lists them. You can change them anywhere, even off a Flash Station; a body-changing program still needs its socket to run. While the wheel is open, the panel beside it shows what the pointed-at shortcut does (for `run`, the program's type, TOPS and RAM, and a preset's description), the gateway under your crosshair and your free TOPS.
+
+Edge stays closed: the answer comes back on a card. Shortcuts that need a window (`log`, `top`, `edit`, `cat`) open Edge. Programs you run from the wheel use `remote.target()` to find what you're looking at.
 
 ## Keys
 

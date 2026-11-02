@@ -27,6 +27,8 @@ import com.mhm.mhm2027.gateway.Sockets;
 import com.mhm.mhm2027.hud.Hud;
 import com.mhm.mhm2027.hud.HudBoot;
 import com.mhm.mhm2027.hud.HudEvent;
+import com.mhm.mhm2027.hud.HudState;
+import com.mhm.mhm2027.hud.HudTargets;
 
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
@@ -34,6 +36,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.Attribute;
@@ -47,6 +50,10 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
  */
 public final class Terminal {
     private static final int LOG_LINES = 50;
+    /** How long the target callout remembers an inspection: a minute. */
+    private static final int KNOWLEDGE_TICKS = 1200;
+    private static final int MAX_TASKS = 8;
+    private static final int MAX_TARGETS = 16;
     /** Freed TOPS comes back over 3 seconds. */
     private static final int TOPS_RECOVERY_TICKS = 60;
     private static final int PANIC_LOCK_TICKS = 100;
@@ -101,6 +108,12 @@ public final class Terminal {
     private float flashShare;
     private long kernelReadyAt;
     private long overloadLockedUntil;
+    /** How long the current reboot lock lasts in all, for the task list's bar. */
+    private int lockTicks;
+    /** Access attempts on this gateway, by attempt, while their attackers keep ticking them. */
+    private final Map<Object, Incoming> incoming = new HashMap<>();
+    /** What this gateway's inspections found, by target, for the target callout. */
+    private final Map<UUID, Knowledge> knowledge = new HashMap<>();
 
     Terminal(ServerPlayer player) {
         this.owner = player.getUUID();
@@ -499,6 +512,7 @@ public final class Terminal {
      */
     private void lock(String reason, int ticks) {
         lockedUntil = now + ticks;
+        lockTicks = ticks;
         lockReason = reason;
         Sessions.endAllOn(owner, reason);
         Sessions.endAllBy(owner, reason);
@@ -564,6 +578,11 @@ public final class Terminal {
 
     void tick(ServerPlayer player) {
         now++;
+        // An attempt the attacker stopped ticking (it ended, or its program did) leaves the list.
+        incoming.values().removeIf(attempt -> now - attempt.seenAt() > 2);
+        if (now % 20 == 0) {
+            knowledge.values().removeIf(known -> now - known.at() > KNOWLEDGE_TICKS);
+        }
         boolean bodyChanged = tickModifiers(player);
         recoveringTops.removeIf(entry -> --entry[1] <= 0);
         resisting.removeIf(entry -> --entry[1] <= 0);
@@ -1000,6 +1019,119 @@ public final class Terminal {
         }
         outputs.line(source, clockMinute(), message);
     }
+
+    // region HUD
+
+    /** An access attempt on this gateway, as its attacker last ticked it. */
+    private record Incoming(String address, String detail, int total, int left, long seenAt) {
+    }
+
+    /** What an inspection by this gateway found, and when. */
+    public record Knowledge(List<FlawRules.Hit> flaws, long at) {
+    }
+
+    /** Called by an attempt on this gateway every tick it runs, for the task list. */
+    void incoming(Object attempt, String address, String detail, int total, int left) {
+        incoming.put(attempt, new Incoming(address, detail, total, left, now));
+    }
+
+    /** An inspection finished (a program's or the Scanner's): the callout shows its flaws for a minute. */
+    public void remember(LivingEntity target) {
+        knowledge.put(target.getUUID(), new Knowledge(Gateways.flawsOf(target), now));
+    }
+
+    private @Nullable Knowledge knowledge(UUID target) {
+        Knowledge known = knowledge.get(target);
+        return known == null || now - known.at() > KNOWLEDGE_TICKS ? null : known;
+    }
+
+    /** Everything that takes time, for the HUD's task list: what you may need to act on first, at most eight. */
+    public List<HudState.Task> tasks(ServerPlayer player) {
+        List<HudState.Task> tasks = new ArrayList<>();
+        for (Incoming attempt : incoming.values()) {
+            tasks.add(new HudState.Task(HudState.Task.Kind.INCOMING, attempt.address(), attempt.detail(), attempt.total(), attempt.left()));
+        }
+        if (flash != null) {
+            tasks.add(new HudState.Task(HudState.Task.Kind.FLASH, "firmware", "flashing · stay near the station", 100,
+                    Math.round((1 - Math.max(0, flashShare)) * 100)));
+        }
+        if (isRebooting()) {
+            tasks.add(new HudState.Task(HudState.Task.Kind.LOCKED, "reboot", lockReason, Math.max(1, lockTicks), (int) (lockedUntil - now)));
+        }
+        if (now < overloadLockedUntil) {
+            tasks.add(new HudState.Task(HudState.Task.Kind.LOCKED, "overload", "sockets locked after overheating",
+                    Config.OVERLOAD_LOCK_SECONDS.get() * 20, (int) (overloadLockedUntil - now)));
+        }
+        for (Sessions.Session session : Sessions.heldBy(owner)) {
+            tasks.add(new HudState.Task(HudState.Task.Kind.SESSION, Addresses.of(session.target), (session.root ? "root" : "user") + " session",
+                    AccessRules.SESSION_TICKS, (int) Math.max(0, session.expiresAt - session.now())));
+        }
+        GatewayData data = data(player);
+        double heatRate = programs.stream().filter(Program::isOverload)
+                .mapToInt(program -> SocketRules.heatPerSecond(program.codeLevel(), data.level())).sum() - Config.HEAT_COOLING_PER_SECOND.get();
+        for (Program program : programs) {
+            LuaSandbox.Awaitable waiting = program.awaiting();
+            if (waiting != null && waiting.totalTicks() > 0) {
+                String detail = waiting.detail().isEmpty() ? waiting.state() : waiting.state() + " " + waiting.detail();
+                tasks.add(new HudState.Task(HudState.Task.Kind.WAITING, program.name(), detail, waiting.totalTicks(),
+                        Math.min(waiting.ticksLeft(), waiting.totalTicks())));
+            } else if (program.isOverload()) {
+                String crash = heatRate > 0 ? " · crash in ~" + (int) Math.ceil((GatewayData.MAX_HEAT - data.heat()) / heatRate) + " s" : "";
+                tasks.add(new HudState.Task(HudState.Task.Kind.OVERLOAD, program.name(),
+                        "Heat +" + SocketRules.heatPerSecond(program.codeLevel(), data.level()) + "/s" + crash, 100,
+                        (int) Math.round(GatewayData.MAX_HEAT - data.heat())));
+            } else {
+                String state = program.state(now);
+                tasks.add(new HudState.Task(state.equals("idle") ? HudState.Task.Kind.IDLE : HudState.Task.Kind.BUSY, program.name(), state, 0, 0));
+            }
+        }
+        for (Map.Entry<String, Long> cooldown : cooldowns.entrySet()) {
+            long left = cooldown.getValue() - now;
+            if (left > 0) {
+                int total = ApiSpec.byId(cooldown.getKey()).map(ApiSpec::cooldownTicks).orElse((int) left);
+                tasks.add(new HudState.Task(HudState.Task.Kind.COOLDOWN, cooldown.getKey(), "cooldown", Math.max(total, (int) left), (int) left));
+            }
+        }
+        tasks.sort(Comparator.comparingInt(task -> task.kind().ordinal()));
+        return tasks.size() > MAX_TASKS ? List.copyOf(tasks.subList(0, MAX_TASKS)) : tasks;
+    }
+
+    /**
+     * The gateways in scan range, for the HUD's target callout: what a free scan shows, plus
+     * what this gateway knows of each: an inspection in the last minute, its session, an
+     * attempt or inspection under way.
+     */
+    public HudTargets targets(ServerPlayer player) {
+        if (poweredOff) {
+            return HudTargets.NONE;
+        }
+        List<HudTargets.Seen> seen = new ArrayList<>();
+        for (LivingEntity entity : Gateways.around(player, data(player).tier().scanRange(), MAX_TARGETS)) {
+            GatewayData theirs = Gateways.of(entity);
+            Knowledge known = knowledge(entity.getUUID());
+            List<HudTargets.Flaw> flaws = known == null ? List.of()
+                    : known.flaws().stream().map(hit -> new HudTargets.Flaw(hit.className(), hit.severity().id())).toList();
+            Sessions.Session session = Sessions.find(owner, entity.getUUID());
+            String attempt = "";
+            int total = 0;
+            int left = 0;
+            for (Program program : programs) {
+                LuaSandbox.Awaitable waiting = program.awaiting();
+                if (waiting != null && waiting.totalTicks() > 0 && entity.getUUID().equals(waiting.target())) {
+                    attempt = waiting.state();
+                    total = waiting.totalTicks();
+                    left = Math.min(waiting.ticksLeft(), total);
+                }
+            }
+            seen.add(new HudTargets.Seen(entity.getId(), entity.getName().getString(), Addresses.of(entity.getUUID()),
+                    theirs == null ? -1 : theirs.level(), entity instanceof Player, known == null ? -1 : (int) (now - known.at()), flaws,
+                    session == null ? "" : session.root ? "root" : "user", session == null ? 0 : (int) Math.max(0, session.expiresAt - session.now()),
+                    attempt, total, left));
+        }
+        return new HudTargets(List.copyOf(seen));
+    }
+
+    // endregion
 
     /** Logs how a program ended; its window in Edge keeps the output and shows why. */
     void ended(String name, String how, String reason) {
