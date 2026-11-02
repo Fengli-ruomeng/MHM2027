@@ -309,6 +309,11 @@ public final class Program implements ScriptHost {
         return Math.max(peakTops, windowPeak);
     }
 
+    /** What the program is waiting on (a timer, an inspection, an access attempt), or null. */
+    public LuaSandbox.@Nullable Awaitable awaiting() {
+        return awaiting;
+    }
+
     /** idle, running, sleeping, waiting or paused, for the ps view. */
     public String state(long now) {
         if (current == null) {

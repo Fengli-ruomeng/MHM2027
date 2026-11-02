@@ -5,6 +5,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.regex.Pattern;
+
+import com.mhm.mhm2027.editor.LuaHighlighter;
+import com.mhm.mhm2027.terminal.ApiDocs;
+import com.mhm.mhm2027.terminal.ApiSpec;
+import com.mhm.mhm2027.terminal.ScriptEvents;
 
 /**
  * The Edge terminal's shell: it parses what the player types, prints the answer, and queues
@@ -24,25 +30,35 @@ public final class EdgeShell {
     public static final int PINK = 0xFFFF6FA6;
     public static final int GOLD = 0xFFFFC877;
     public static final int VIOLET = 0xFFB9A4FF;
+    public static final int GREEN = 0xFF98E3A0;
 
     private static final int MAX_LINES = 400;
     private static final int MAX_HISTORY = 50;
     /** Lines printed together appear one after another, this far apart. */
     private static final long STAGGER_MILLIS = 25;
+    /** Prose wraps at this many characters until the screen says how wide the terminal is. */
+    private static final int DEFAULT_COLUMNS = 60;
+    private static final List<String> NAMESPACES = List.of("me", "sys", "remote");
+    /** What a new file may be called: the same rule as the editor's name prompt and the server. */
+    private static final Pattern NEW_NAME = Pattern.compile("[A-Za-z0-9_\\-]{1,32}");
 
     /** The commands, with a line of help each, in the order help lists them. */
     static final List<String[]> COMMANDS = List.of(
             new String[]{"ls", "what's in your storage"},
+            new String[]{"cat", "<file>  print a script"},
             new String[]{"run", "<program>  start a program"},
             new String[]{"stop", "<program>  stop one"},
             new String[]{"ps", "running programs"},
+            new String[]{"top", "live processes, in their own window"},
             new String[]{"log", "[program]  open a program's window, or kernel.log"},
             new String[]{"status", "your gateway at a glance"},
             new String[]{"flaws", "your flaws, and the ones you're close to"},
+            new String[]{"scan", "[radius]  gateways around you"},
             new String[]{"socket", "[ls | add | rm]  sockets (change them at a Flash Station)"},
             new String[]{"kernel", "[ls | install]  your kernel (install at a Flash Station)"},
-            new String[]{"edit", "<file>  open a script in the editor"},
+            new String[]{"edit", "[file]  open the editor"},
             new String[]{"burn", "<file>  copy a script onto a blank chip"},
+            new String[]{"man", "<api | event | hook | command>  how it works"},
             new String[]{"folder", "open your storage folder (singleplayer)"},
             new String[]{"reboot", "restart the gateway"},
             new String[]{"clear", "clear the screen"},
@@ -77,7 +93,10 @@ public final class EdgeShell {
         }
     }
 
-    /** Something for the screen to do: a panel request by its action name, or EDIT, FOLDER or EXIT. */
+    /**
+     * Something for the screen to do: a panel request by its action name (START, SCAN, ...), or
+     * one the screen handles itself: EDIT, CAT, WINDOW, FOLDER or EXIT.
+     */
     public record Request(String action, String argument) {
     }
 
@@ -107,6 +126,10 @@ public final class EdgeShell {
                        List<Script> scripts, List<Proc> programs, List<Flaw> flaws, List<Socket> sockets, List<String> outputs) {
     }
 
+    /** One gateway a scan found. {@code level} is -1 when it can't be read. */
+    public record Gateway(String address, String name, boolean player, int level, double distance) {
+    }
+
     // endregion
 
     private final List<Line> lines = new ArrayList<>();
@@ -114,6 +137,7 @@ public final class EdgeShell {
     private final List<Request> requests = new ArrayList<>();
     private int historyIndex = -1;
     private long printAt;
+    private int columns = DEFAULT_COLUMNS;
 
     public List<Line> lines() {
         return lines;
@@ -134,6 +158,11 @@ public final class EdgeShell {
         printAt = now;
         print(Seg.of("EDGE ", TEXT), Seg.of(data.status().level() + " " + data.status().band() + " · " + data.address(), DIM));
         print(Seg.of("Type a command, or click one. ", DIM), Seg.run("help", CYAN, "help"), Seg.of(" lists them all.", DIM));
+    }
+
+    /** How many characters fit across the terminal, for wrapping prose such as man pages. */
+    public void setColumns(int columns) {
+        this.columns = Math.max(24, columns);
     }
 
     /** A line from outside the shell, such as the server's answer to a request. */
@@ -165,15 +194,28 @@ public final class EdgeShell {
         switch (command) {
             case "help" -> help();
             case "ls" -> ls(data);
+            case "cat" -> cat(data, rest);
             case "run" -> run(data, rest);
             case "stop" -> stop(data, rest);
             case "ps" -> ps(data);
+            case "top" -> {
+                requests.add(new Request("WINDOW", EdgeWindows.TOP));
+                print(Seg.of("opened top", DIM));
+            }
             case "log" -> log(data, rest);
             case "status" -> status(data);
             case "flaws" -> flaws(data);
+            case "scan" -> scan(rest);
             case "socket" -> socket(data, rest);
             case "kernel" -> kernel(data, rest);
-            case "edit" -> file(data, rest, "edit", "EDIT");
+            case "man" -> man(data, rest);
+            case "edit" -> {
+                if (rest.isEmpty()) {
+                    requests.add(new Request("EDIT", ""));
+                } else {
+                    file(data, rest, "edit", "EDIT");
+                }
+            }
             case "burn" -> file(data, rest, "burn", "BURN");
             case "folder" -> requests.add(new Request("FOLDER", ""));
             case "reboot" -> {
@@ -378,14 +420,250 @@ public final class EdgeShell {
         }
     }
 
-    /** edit and burn: your own files only; presets are locked. */
-    private void file(Data data, String name, String command, String action) {
-        Optional<Script> script = find(data.scripts().stream().filter(each -> !each.preset()).toList(), Script::name, Script::id, name);
-        if (script.isEmpty()) {
-            error(command + ": no file called " + name + " · try ls");
+    /** cat: asks the server for the file; it prints when it arrives (see {@link #printFile}). */
+    private void cat(Data data, String name) {
+        if (name.isEmpty()) {
+            error("cat: which file? Try ls.");
             return;
         }
-        requests.add(new Request(action, script.get().id()));
+        Optional<Script> script = find(data.scripts(), Script::name, Script::id, name);
+        if (script.isEmpty()) {
+            error("cat: no file called " + name + " · try ls");
+        } else if (script.get().preset()) {
+            error("cat: " + script.get().name() + " is a preset; its code is locked");
+        } else {
+            requests.add(new Request("CAT", script.get().id()));
+        }
+    }
+
+    /** A file the server sent for cat: numbered and highlighted, like the editor shows it. */
+    public void printFile(String name, String content, long now) {
+        printAt = Math.max(printAt, now);
+        List<String> lines = List.of(content.replace("\r", "").replace("\t", "  ").split("\n", -1));
+        if (lines.size() > 1 && lines.getLast().isEmpty()) {
+            lines = lines.subList(0, lines.size() - 1);
+        }
+        print(Seg.of("── " + name + ".lua", TEXT), Seg.of(" · " + lines.size() + (lines.size() == 1 ? " line" : " lines"), GREY),
+                Seg.of("  ", TEXT), Seg.run("[edit]", CYAN, "edit " + name));
+        int width = String.valueOf(lines.size()).length();
+        List<List<LuaHighlighter.Span>> spans = LuaHighlighter.highlight(lines);
+        for (int i = 0; i < lines.size(); i++) {
+            List<Seg> segs = new ArrayList<>();
+            segs.add(Seg.of(" ".repeat(width - String.valueOf(i + 1).length()) + (i + 1) + "  ", GREY));
+            String line = lines.get(i);
+            int at = 0;
+            for (LuaHighlighter.Span span : spans.get(i)) {
+                if (span.start() > at) {
+                    segs.add(Seg.of(line.substring(at, span.start()), TEXT));
+                }
+                segs.add(Seg.of(line.substring(Math.max(at, span.start()), span.end()), codeColor(span.kind())));
+                at = Math.max(at, span.end());
+            }
+            if (at < line.length()) {
+                segs.add(Seg.of(line.substring(at), TEXT));
+            }
+            print(segs);
+        }
+    }
+
+    private void scan(String rest) {
+        String radius = "";
+        if (!rest.isEmpty()) {
+            try {
+                int blocks = Integer.parseInt(rest.strip());
+                if (blocks < 1) {
+                    throw new NumberFormatException();
+                }
+                radius = String.valueOf(blocks);
+            } catch (NumberFormatException e) {
+                error("scan: the radius is a number of blocks, such as scan 8");
+                return;
+            }
+        }
+        requests.add(new Request("SCAN", radius));
+        print(Seg.of("scanning...", DIM));
+    }
+
+    /** The server's answer to scan: nearest first. */
+    public void scanned(int radius, List<Gateway> found, long now) {
+        printAt = Math.max(printAt, now);
+        if (found.isEmpty()) {
+            print(Seg.of("no gateways within " + radius + " blocks", GREY));
+            return;
+        }
+        print(Seg.of(pad("ADDRESS", 16) + pad("NAME", 18) + pad("LV", 5) + "DIST", GREY));
+        for (Gateway gateway : found) {
+            print(Seg.of(pad(gateway.address(), 16), CYAN), Seg.of(pad(gateway.name(), 18), gateway.player() ? ORANGE : TEXT),
+                    Seg.of(pad(gateway.level() < 0 ? "?" : "LV" + gateway.level(), 5), DIM),
+                    Seg.of(String.format(Locale.ROOT, "%.1fm", gateway.distance()), DIM));
+        }
+        print(Seg.of(found.size() + (found.size() == 1 ? " gateway" : " gateways") + " within " + radius + " blocks · ", GREY),
+                Seg.run("man remote.inspect", CYAN, "man remote.inspect"));
+    }
+
+    /**
+     * man: an API's page (signature, what it does, level and costs), a namespace's list, an
+     * event or hook, or a shell command. With no topic, the index.
+     */
+    private void man(Data data, String topic) {
+        String wanted = topic.strip().toLowerCase(Locale.ROOT);
+        if (wanted.endsWith("()")) {
+            wanted = wanted.substring(0, wanted.length() - 2);
+        }
+        if (wanted.isEmpty()) {
+            print(Seg.of("man <topic>", TEXT), Seg.of(" · what an API, event, hook or command does", DIM));
+            List<Seg> apis = new ArrayList<>(List.of(Seg.of(pad("  apis", 10), DIM)));
+            for (String namespace : NAMESPACES) {
+                apis.add(Seg.run(namespace + ".*", CYAN, "man " + namespace));
+                apis.add(Seg.of("  ", TEXT));
+            }
+            print(apis);
+            print(Seg.of(pad("  scripts", 10), DIM), Seg.run("events", GOLD, "man events"), Seg.of("  ", TEXT),
+                    Seg.run("hooks", VIOLET, "man hooks"), Seg.of("  ", TEXT), Seg.run("commands", TEXT, "man commands"));
+            return;
+        }
+        Optional<ApiSpec> spec = ApiSpec.byId(wanted);
+        if (spec.isPresent()) {
+            apiPage(data, spec.get());
+            return;
+        }
+        // "speed_boost" on its own finds me.speed_boost, unless a command has that name.
+        String member = wanted;
+        List<ApiSpec> byMember = ApiSpec.all().stream().filter(each -> each.member().equals(member)).toList();
+        if (NAMESPACES.contains(wanted)) {
+            String namespace = wanted;
+            for (ApiSpec each : ApiSpec.all()) {
+                if (each.namespace().equals(namespace)) {
+                    print(Seg.fill(pad(each.id() + "(" + each.params() + ")", 34), CYAN, "man " + each.id()),
+                            Seg.of(pad("LV" + each.minLevel(), 5), each.minLevel() > level(data) ? PINK : DIM),
+                            Seg.of(ApiDocs.plain(ApiDocs.api(each.id()).orElse("")), DIM));
+                }
+            }
+            return;
+        }
+        switch (wanted) {
+            case "events" -> {
+                ApiDocs.events().forEach((event, text) -> print(Seg.fill(pad(event, 20), GOLD, "man " + event), Seg.of(ApiDocs.plain(text), DIM)));
+                return;
+            }
+            case "hooks" -> {
+                ApiDocs.hooks().keySet().forEach(hook -> print(Seg.fill(pad(hook, 20), VIOLET, "man " + hook),
+                        Seg.of("kernel hook", DIM)));
+                return;
+            }
+            case "commands" -> {
+                help();
+                return;
+            }
+            default -> {
+            }
+        }
+        boolean found = false;
+        if (ApiDocs.events().containsKey(wanted)) {
+            print(Seg.of("function " + wanted + "(...)", GOLD), Seg.of("  program event", GREY));
+            wrap(ApiDocs.plain(ApiDocs.events().get(wanted)), TEXT);
+            found = true;
+        }
+        if (ApiDocs.hooks().containsKey(wanted)) {
+            print(Seg.of("function " + wanted + "(...)", VIOLET), Seg.of("  kernel hook", GREY));
+            wrap(ApiDocs.plain(ApiDocs.hooks().get(wanted)), TEXT);
+            found = true;
+        }
+        for (String[] command : COMMANDS) {
+            if (command[0].equals(wanted)) {
+                print(Seg.fill(command[0], CYAN, command[0] + " "), Seg.of("  shell command", GREY));
+                wrap(command[1], TEXT);
+                found = true;
+            }
+        }
+        if (byMember.size() == 1) {
+            if (found) {
+                print(Seg.of("  see also ", GREY), Seg.run("man " + byMember.getFirst().id(), CYAN, "man " + byMember.getFirst().id()));
+            } else {
+                apiPage(data, byMember.getFirst());
+            }
+        } else if (!found) {
+            print(Seg.of("man: nothing on " + topic.strip() + " · try ", PINK), Seg.run("man", CYAN, "man"));
+        }
+    }
+
+    private void apiPage(Data data, ApiSpec spec) {
+        print(Seg.of(spec.id() + "(" + spec.params() + ")", CYAN), Seg.of(spec.kernel() ? "  programs and kernel hooks" : "  programs", GREY));
+        wrap(ApiDocs.plain(ApiDocs.api(spec.id()).orElse("No description yet.")), TEXT);
+        int level = level(data);
+        List<Seg> facts = new ArrayList<>();
+        facts.add(Seg.of("  LV" + spec.minLevel(), spec.minLevel() > level ? PINK : TEXT));
+        if (spec.minLevel() > level && level >= 0) {
+            facts.add(Seg.of(" (you're LV" + level + ")", PINK));
+        }
+        facts.add(Seg.of(" · " + spec.steps() + (spec.steps() == 1 ? " step" : " steps") + " a call ("
+                + spec.steps() * ApiSpec.STEP_INSTRUCTIONS + " instructions)", DIM));
+        facts.add(Seg.of(" · +" + spec.ramMb() + " MB RAM", DIM));
+        print(facts);
+        List<Seg> rules = new ArrayList<>();
+        if (spec.needsSlot()) {
+            rules.add(Seg.of("  runs from a socket", ORANGE));
+        }
+        if (spec.cooldownSeconds() > 0) {
+            String seconds = spec.cooldownSeconds() == Math.rint(spec.cooldownSeconds())
+                    ? String.valueOf((long) spec.cooldownSeconds()) : String.valueOf(spec.cooldownSeconds());
+            rules.add(Seg.of((rules.isEmpty() ? "  " : " · ") + seconds + " s cooldown, shared by your programs", DIM));
+        }
+        if (!rules.isEmpty()) {
+            print(rules);
+        }
+    }
+
+    /** Prose, wrapped to the terminal's width and indented. */
+    private void wrap(String text, int color) {
+        int width = Math.max(20, columns - 2);
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            if (!line.isEmpty() && line.length() + 1 + word.length() > width) {
+                print(Seg.of("  " + line, color));
+                line.setLength(0);
+            }
+            if (!line.isEmpty()) {
+                line.append(' ');
+            }
+            line.append(word);
+        }
+        if (!line.isEmpty()) {
+            print(Seg.of("  " + line, color));
+        }
+    }
+
+    /** The player's gateway level from the status label ("LV4"), or -1. */
+    private static int level(Data data) {
+        String label = data.status().level();
+        try {
+            return label.startsWith("LV") ? Integer.parseInt(label.substring(2)) : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * edit and burn: your own files only; presets are locked. edit with a new name offers to
+     * create the file.
+     */
+    private void file(Data data, String name, String command, String action) {
+        Optional<Script> script = find(data.scripts().stream().filter(each -> !each.preset()).toList(), Script::name, Script::id, name);
+        if (script.isPresent()) {
+            requests.add(new Request(action, script.get().id()));
+            return;
+        }
+        if (find(data.scripts(), Script::name, Script::id, name).isPresent()) {
+            error(command + ": " + name + " is a preset; its code is locked");
+            return;
+        }
+        String fileName = name.toLowerCase(Locale.ROOT).endsWith(".lua") ? name.substring(0, name.length() - 4) : name;
+        if (action.equals("EDIT") && NEW_NAME.matcher(fileName).matches()) {
+            requests.add(new Request("EDIT_NEW", fileName));
+            print(Seg.of("no " + fileName + ".lua yet · the editor will create it", DIM));
+            return;
+        }
+        error(command + ": no file called " + name + " · try ls");
     }
 
     // endregion
@@ -410,7 +688,8 @@ public final class EdgeShell {
             case "run" -> data.scripts().stream().filter(each -> !each.kernel()).map(Script::name).toList();
             case "stop" -> data.programs().stream().map(Proc::name).toList();
             case "log" -> data.outputs();
-            case "edit", "burn" -> data.scripts().stream().filter(each -> !each.preset()).map(Script::name).toList();
+            case "edit", "burn", "cat" -> data.scripts().stream().filter(each -> !each.preset()).map(Script::name).toList();
+            case "man" -> manTopics();
             case "socket", "kernel" -> null;
             default -> List.of();
         };
@@ -454,6 +733,17 @@ public final class EdgeShell {
             shared = shared.substring(0, i);
         }
         return shared.length() > partial.length() ? head + shared : input;
+    }
+
+    /** Everything man has a page for. */
+    static List<String> manTopics() {
+        List<String> topics = new ArrayList<>(NAMESPACES);
+        topics.addAll(List.of("events", "hooks", "commands"));
+        ApiSpec.all().forEach(spec -> topics.add(spec.id()));
+        topics.addAll(ScriptEvents.PROGRAM_EVENTS);
+        topics.addAll(ScriptEvents.KERNEL_HOOKS);
+        COMMANDS.forEach(command -> topics.add(command[0]));
+        return topics.stream().distinct().toList();
     }
 
     private static List<String> startingWith(List<String> names, String partial) {
@@ -531,6 +821,20 @@ public final class EdgeShell {
             }
         }
         return Optional.empty();
+    }
+
+    private static int codeColor(LuaHighlighter.Kind kind) {
+        return switch (kind) {
+            case KEYWORD -> VIOLET;
+            case STRING -> GREEN;
+            case COMMENT -> GREY;
+            case NUMBER -> ORANGE;
+            case API -> CYAN;
+            case EVENT -> GOLD;
+            case HEADER -> PINK;
+            case BUILTIN -> DIM;
+            case PLAIN -> TEXT;
+        };
     }
 
     private static int stateColor(String state) {

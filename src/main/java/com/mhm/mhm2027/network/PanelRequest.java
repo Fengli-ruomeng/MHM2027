@@ -31,7 +31,9 @@ public record PanelRequest(Action action, String argument) implements CustomPack
         /** G on an off gateway: boot it. */
         BOOT,
         /** The boot screen was closed before the boot finished. */
-        LOOK_AWAY
+        LOOK_AWAY,
+        /** Edge's scan: list the gateways around you. The argument is a radius, or empty for your full range. */
+        SCAN
     }
 
     public static final Type<PanelRequest> TYPE = new Type<>(Identifier.fromNamespaceAndPath(Mhm2027.MODID, "panel_request"));

@@ -11,6 +11,8 @@ import java.util.Optional;
 public final class EdgeWindows {
     public static final String TERMINAL = "terminal";
     public static final String KERNEL = "kernel.log";
+    public static final String TOP = "top";
+    public static final String EDITOR = "editor";
     private static final String PROGRAM = "program:";
 
     /** Opening, closing and minimising each take this long. */
@@ -23,6 +25,7 @@ public final class EdgeWindows {
     private static final int CASCADE = 12;
     private static final int PROGRAM_HEIGHT = 92;
     private static final int KERNEL_HEIGHT = 82;
+    private static final int TOP_HEIGHT = 112;
 
     public record Rect(int x, int y, int width, int height) {
         public int right() {
@@ -242,17 +245,27 @@ public final class EdgeWindows {
     }
 
     /**
-     * The terminal takes the left side. Everything else goes down the right side, in the first
-     * gap nothing else covers, or cascades from the top when the column is full.
+     * The terminal takes the left side and the editor most of the desktop. Everything else goes
+     * down the right side, in the first gap nothing else covers, or cascades from the top when
+     * the column is full.
      */
     private Rect place(String id) {
         int terminalWidth = Math.max(MIN_WIDTH, area.width * 11 / 20);
         if (id.equals(TERMINAL)) {
             return clamp(new Rect(area.x, area.y, terminalWidth, area.height));
         }
+        if (id.equals(EDITOR)) {
+            // Leaves a strip of the terminal showing, so it's one click away.
+            int x = area.x + area.width / 6;
+            return clamp(new Rect(x, area.y, Math.max(MIN_WIDTH, area.right() - x), area.height));
+        }
         int x = area.x + terminalWidth + GAP;
         int width = Math.max(MIN_WIDTH, area.right() - x);
-        int height = Math.min(area.height, id.equals(KERNEL) ? KERNEL_HEIGHT : PROGRAM_HEIGHT);
+        int height = Math.min(area.height, switch (id) {
+            case KERNEL -> KERNEL_HEIGHT;
+            case TOP -> TOP_HEIGHT;
+            default -> PROGRAM_HEIGHT;
+        });
         List<Integer> tops = new ArrayList<>(List.of(area.y));
         for (Window window : order) {
             if (window.shown()) {
@@ -263,11 +276,11 @@ public final class EdgeWindows {
         for (int y : tops) {
             Rect candidate = new Rect(x, y, width, height);
             if (candidate.bottom() <= area.bottom() && order.stream().noneMatch(window -> window.shown()
-                    && !window.id.equals(TERMINAL) && bounds(window).overlaps(candidate))) {
+                    && !window.id.equals(TERMINAL) && !window.id.equals(EDITOR) && bounds(window).overlaps(candidate))) {
                 return clamp(candidate);
             }
         }
-        int step = (int) order.stream().filter(window -> !window.id.equals(TERMINAL)).count() % 5;
+        int step = (int) order.stream().filter(window -> !window.id.equals(TERMINAL) && !window.id.equals(EDITOR)).count() % 5;
         return clamp(new Rect(x - step * CASCADE, area.y + step * CASCADE, width, height));
     }
 

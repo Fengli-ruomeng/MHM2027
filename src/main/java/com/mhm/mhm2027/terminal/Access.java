@@ -193,6 +193,7 @@ public final class Access {
         private final String method;
         private final boolean escalate;
         private final Sessions.@Nullable Session session;
+        private final int totalTicks;
         private int ticksLeft;
         private Varargs result = varargsOf(Constants.NIL, valueOf("failed"));
 
@@ -204,6 +205,7 @@ public final class Access {
             this.method = method;
             this.escalate = escalate;
             this.session = session;
+            this.totalTicks = Math.max(1, ticks);
             this.ticksLeft = ticks;
         }
 
@@ -252,6 +254,22 @@ public final class Access {
         @Override
         public String state() {
             return escalate ? "escalating" : "accessing";
+        }
+
+        @Override
+        public int totalTicks() {
+            return totalTicks;
+        }
+
+        @Override
+        public int ticksLeft() {
+            return Math.max(0, ticksLeft);
+        }
+
+        @Override
+        public String detail() {
+            String address = Addresses.of(target.getUUID());
+            return escalate ? address : address + " · " + method;
         }
     }
 

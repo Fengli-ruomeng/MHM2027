@@ -8,6 +8,7 @@ import com.mhm.mhm2027.network.EditorCheck;
 import com.mhm.mhm2027.network.EditorFile;
 import com.mhm.mhm2027.network.PanelMessage;
 import com.mhm.mhm2027.network.PanelSnapshot;
+import com.mhm.mhm2027.network.ScanResult;
 
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -24,6 +25,7 @@ public final class PanelNetworking {
     public static void register(RegisterClientPayloadHandlersEvent event) {
         event.register(PanelSnapshot.TYPE, (snapshot, context) -> PanelState.accept(snapshot));
         event.register(PanelMessage.TYPE, (message, context) -> PanelState.accept(message));
+        event.register(ScanResult.TYPE, (result, context) -> PanelState.accept(result));
         event.register(EditorFile.TYPE, (file, context) -> EditorState.accept(file));
         event.register(EditorCheck.TYPE, (check, context) -> EditorState.accept(check));
         event.register(HudEvent.TYPE, (hudEvent, context) -> HudFeed.accept(hudEvent));

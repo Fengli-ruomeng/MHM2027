@@ -58,7 +58,8 @@ public final class EditorService {
                 throw new InstallException("A Null gateway has no storage");
             }
             switch (request.action()) {
-                case OPEN -> PacketDistributor.sendToPlayer(player, new EditorFile(name, ScriptStore.read(server, uuid, name)));
+                case OPEN -> PacketDistributor.sendToPlayer(player, EditorFile.open(name, ScriptStore.read(server, uuid, name)));
+                case READ -> PacketDistributor.sendToPlayer(player, new EditorFile(name, ScriptStore.read(server, uuid, name), true));
                 case SAVE -> {
                     ScriptStore.save(server, uuid, name, request.content());
                     reply(player, true, Component.translatable("mhm2027.editor.saved", name + ".lua"));
@@ -66,17 +67,17 @@ public final class EditorService {
                 case CREATE_PROGRAM, CREATE_KERNEL -> {
                     String template = request.action() == EditorRequest.Action.CREATE_KERNEL ? kernelTemplate(name) : programTemplate(name);
                     ScriptStore.create(server, uuid, name, template);
-                    PacketDistributor.sendToPlayer(player, new EditorFile(name, template));
+                    PacketDistributor.sendToPlayer(player, EditorFile.open(name, template));
                     reply(player, true, Component.translatable("mhm2027.editor.created", name + ".lua"));
                 }
                 case RENAME -> {
                     ScriptStore.rename(server, uuid, name, request.argument());
-                    PacketDistributor.sendToPlayer(player, new EditorFile(request.argument(), ScriptStore.read(server, uuid, request.argument())));
+                    PacketDistributor.sendToPlayer(player, EditorFile.open(request.argument(), ScriptStore.read(server, uuid, request.argument())));
                     reply(player, true, Component.translatable("mhm2027.editor.renamed", name + ".lua", request.argument() + ".lua"));
                 }
                 case DELETE -> {
                     ScriptStore.delete(server, uuid, name);
-                    PacketDistributor.sendToPlayer(player, new EditorFile("", ""));
+                    PacketDistributor.sendToPlayer(player, EditorFile.open("", ""));
                     reply(player, true, Component.translatable("mhm2027.editor.deleted", name + ".lua"));
                 }
                 case CHECK -> check(player, request);
@@ -84,7 +85,8 @@ public final class EditorService {
         } catch (InstallException e) {
             reply(player, false, Component.literal(e.getMessage()));
         }
-        if (request.action() != EditorRequest.Action.CHECK && request.action() != EditorRequest.Action.OPEN) {
+        if (request.action() != EditorRequest.Action.CHECK && request.action() != EditorRequest.Action.OPEN
+                && request.action() != EditorRequest.Action.READ) {
             PanelService.sendSnapshot(player);
         }
     }

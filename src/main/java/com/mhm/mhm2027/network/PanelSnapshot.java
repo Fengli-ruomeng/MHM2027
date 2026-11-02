@@ -52,10 +52,31 @@ public record PanelSnapshot(
     }
 
     /**
-     * @param id what started it: a file name, or {@code preset:<id>}
+     * How far along the wait a program is on is: an access attempt or an inspection. The client
+     * counts {@code ticksLeft} down between snapshots, so the bar moves smoothly.
+     *
+     * @param detail what it's working on, such as "10.47.203.9 · memory"
+     */
+    public record Progress(String detail, int totalTicks, int ticksLeft) {
+        static final StreamCodec<RegistryFriendlyByteBuf, Progress> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.STRING_UTF8, Progress::detail,
+                ByteBufCodecs.VAR_INT, Progress::totalTicks,
+                ByteBufCodecs.VAR_INT, Progress::ticksLeft,
+                Progress::new);
+
+        public static final Progress NONE = new Progress("", 0, 0);
+
+        public boolean active() {
+            return totalTicks > 0;
+        }
+    }
+
+    /**
+     * @param id       what started it: a file name, or {@code preset:<id>}
+     * @param progress the access attempt or inspection it's waiting on, or {@link Progress#NONE}
      */
     public record ProgramRow(String id, String name, String type, int ramMb, int tops, float averageTops, float peakTops,
-                             String state, boolean preset) {
+                             String state, boolean preset, Progress progress) {
         static final StreamCodec<RegistryFriendlyByteBuf, ProgramRow> STREAM_CODEC = StreamCodec.composite(
                 ByteBufCodecs.STRING_UTF8, ProgramRow::id,
                 ByteBufCodecs.STRING_UTF8, ProgramRow::name,
@@ -66,6 +87,7 @@ public record PanelSnapshot(
                 ByteBufCodecs.FLOAT, ProgramRow::peakTops,
                 ByteBufCodecs.STRING_UTF8, ProgramRow::state,
                 ByteBufCodecs.BOOL, ProgramRow::preset,
+                Progress.STREAM_CODEC, ProgramRow::progress,
                 ProgramRow::new);
     }
 

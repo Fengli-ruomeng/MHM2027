@@ -10,7 +10,7 @@ Gateway mobs follow exactly the same rules as players, in both directions. Null 
 - `remote.scan(radius)`: up to 8 gateways around you, nearest first.
 - `remote.inspect(t)`: waits about **1 second**, then tells you the target's name, level and **flaws**. Your kernel's `rate_limit` makes this faster or slower. The target's programs hear `on_scanned`, so they know you looked.
 
-The [Scanner](Items#kuyoz-mech) item does the same inspect by hand, without a program.
+The [Scanner](Items#kuyoz-mech) item does the same inspect by hand, without a program. To look around without a program, type `scan` in Edge's terminal: it lists what `remote.scan` would find (see [The Edge Desktop](Control-Panel#commands)).
 
 ## 2. Break in: access attempts
 
@@ -18,7 +18,7 @@ The [Scanner](Items#kuyoz-mech) item does the same inspect by hand, without a pr
 local s, why = remote.access(t, method)
 ```
 
-The target must be within **12 + your level** blocks when you start. After that, range doesn't matter. Your program pauses until the attempt ends.
+The target must be within **12 + your level** blocks when you start. After that, range doesn't matter. Your program pauses until the attempt ends, and its window in Edge shows a bar with the target, the method and the time left.
 
 ### How long it takes
 

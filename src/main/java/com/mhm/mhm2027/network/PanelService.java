@@ -1,21 +1,29 @@
 package com.mhm.mhm2027.network;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
+
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.gateway.GatewayData;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.gateway.Sockets;
 import com.mhm.mhm2027.hud.Hud;
 import com.mhm.mhm2027.item.ChipActions;
 import com.mhm.mhm2027.station.FlashStationBlock;
+import com.mhm.mhm2027.terminal.Addresses;
 import com.mhm.mhm2027.terminal.FlawRules;
+import com.mhm.mhm2027.terminal.Gateways;
 import com.mhm.mhm2027.terminal.InstallException;
 import com.mhm.mhm2027.terminal.Kernel;
 import com.mhm.mhm2027.terminal.KernelSettings;
+import com.mhm.mhm2027.terminal.LuaSandbox;
 import com.mhm.mhm2027.terminal.PresetRegistry;
 import com.mhm.mhm2027.terminal.Program;
 import com.mhm.mhm2027.terminal.ScriptStore;
@@ -25,6 +33,8 @@ import com.mhm.mhm2027.terminal.Terminals;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -43,6 +53,9 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public final class PanelService {
     private static final int SNAPSHOT_INTERVAL_TICKS = 10;
     private static final Set<UUID> WATCHERS = new HashSet<>();
+    /** Edge's scan takes as long as an inspection would (rate_limit speeds it up), so it can't be spammed. */
+    private static final int SCAN_BASE_TICKS = 20;
+    private static final Map<UUID, Integer> LAST_SCAN = new HashMap<>();
 
     private PanelService() {
     }
@@ -54,6 +67,7 @@ public final class PanelService {
         // Client handlers are registered on the client side, in Mhm2027Client.
         registrar.playToClient(PanelSnapshot.TYPE, PanelSnapshot.STREAM_CODEC);
         registrar.playToClient(PanelMessage.TYPE, PanelMessage.STREAM_CODEC);
+        registrar.playToClient(ScanResult.TYPE, ScanResult.STREAM_CODEC);
     }
 
     private static void handle(PanelRequest request, IPayloadContext context) {
@@ -79,6 +93,10 @@ public final class PanelService {
         }
         if (request.action() == PanelRequest.Action.LOOK_AWAY) {
             terminal.lookedAway(player);
+            return;
+        }
+        if (request.action() == PanelRequest.Action.SCAN) {
+            scan(player, terminal, request.argument());
             return;
         }
         String name = request.argument();
@@ -152,11 +170,53 @@ public final class PanelService {
     @SubscribeEvent
     static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         WATCHERS.remove(event.getEntity().getUUID());
+        LAST_SCAN.remove(event.getEntity().getUUID());
     }
 
     @SubscribeEvent
     static void onServerStopped(ServerStoppedEvent event) {
         WATCHERS.clear();
+        LAST_SCAN.clear();
+    }
+
+    /**
+     * Edge's scan: the gateways remote.scan would return, as rows for the terminal. Free, like
+     * the other read-only commands, but limited to one per inspection time.
+     */
+    private static void scan(ServerPlayer player, Terminal terminal, String argument) {
+        try {
+            if (Terminals.isNull(player)) {
+                throw new InstallException("scan: a Null gateway can't scan");
+            }
+            terminal.requireOn();
+            if (terminal.isRebooting()) {
+                throw new InstallException("scan: the gateway is rebooting");
+            }
+            int now = player.level().getServer().getTickCount();
+            Integer last = LAST_SCAN.get(player.getUUID());
+            if (last != null && now - last < terminal.kernel().settings().inspectTicks(SCAN_BASE_TICKS)) {
+                throw new InstallException("scan: still scanning, try again in a moment");
+            }
+            LAST_SCAN.put(player.getUUID(), now);
+            int range = player.getData(ModAttachments.GATEWAY).tier().scanRange();
+            int radius = range;
+            if (!argument.isEmpty()) {
+                try {
+                    radius = Math.clamp(Integer.parseInt(argument), 1, range);
+                } catch (NumberFormatException e) {
+                    radius = range;
+                }
+            }
+            List<ScanResult.Row> rows = new ArrayList<>();
+            for (LivingEntity entity : Gateways.around(player, radius, Gateways.MAX_SCAN_RESULTS)) {
+                GatewayData data = Gateways.of(entity);
+                rows.add(new ScanResult.Row(Addresses.of(entity.getUUID()), entity.getName().getString(), entity instanceof Player,
+                        data == null ? -1 : data.level(), entity.distanceTo(player)));
+            }
+            PacketDistributor.sendToPlayer(player, new ScanResult(radius, rows));
+        } catch (InstallException e) {
+            PacketDistributor.sendToPlayer(player, new PanelMessage(false, Component.literal(e.getMessage())));
+        }
     }
 
     private static void requireStation(ServerPlayer player) throws InstallException {
@@ -187,7 +247,7 @@ public final class PanelService {
         List<PanelSnapshot.ProgramRow> programs = terminal.programs().stream()
                 .map(program -> new PanelSnapshot.ProgramRow(program.id(), program.name(), program.type().id(), program.ramMb(),
                         program.tops(), (float) program.averageTops(), (float) program.peakTops(), program.state(terminal.now()),
-                        program.isPreset()))
+                        program.isPreset(), progress(program.awaiting())))
                 .toList();
 
         // Storage: the player's own files, then the presets written into the gateway.
@@ -219,6 +279,13 @@ public final class PanelService {
         return new PanelSnapshot(kernelInfo, programs, scripts, terminal.outputs().outputs(), terminal.outputs().kernel(),
                 terminal.isRebooting() ? terminal.lockReason() : "", terminal.isRebooting() ? terminal.lockSecondsLeft() : 0, flaws,
                 sockets, FlashStationBlock.inReach(player), terminal.overloadLockSecondsLeft());
+    }
+
+    private static PanelSnapshot.Progress progress(LuaSandbox.@Nullable Awaitable waiting) {
+        if (waiting == null || waiting.totalTicks() <= 0) {
+            return PanelSnapshot.Progress.NONE;
+        }
+        return new PanelSnapshot.Progress(waiting.detail(), waiting.totalTicks(), Math.min(waiting.ticksLeft(), waiting.totalTicks()));
     }
 
     private static PanelSnapshot.SocketRow socketRow(boolean overload, String id) {

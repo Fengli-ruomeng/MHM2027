@@ -121,4 +121,116 @@ class EdgeShellTest {
         shell.submit("help", data(), 1000);
         assertTrue(shell.lines().getLast().at() > shell.lines().getFirst().at());
     }
+
+    private static String text(EdgeShell shell) {
+        return String.join("\n", shell.lines().stream().map(EdgeShell.Line::text).toList());
+    }
+
+    @Test
+    void topOpensItsWindowAndEditWorksWithoutAFile() {
+        EdgeShell shell = new EdgeShell();
+        shell.submit("top", data(), 0);
+        shell.submit("edit", data(), 0);
+        shell.submit("edit watcher", data(), 0);
+        assertEquals(List.of(new EdgeShell.Request("WINDOW", EdgeWindows.TOP), new EdgeShell.Request("EDIT", ""),
+                new EdgeShell.Request("EDIT", "Watcher")), shell.drain());
+    }
+
+    @Test
+    void manShowsAnApisLevelCostAndDescription() {
+        EdgeShell shell = new EdgeShell();
+        shell.submit("man me.damage_boost", data(), 0);
+        String page = text(shell);
+        assertTrue(page.contains("me.damage_boost(amount, seconds)"));
+        assertTrue(page.contains("Hit harder"));
+        assertTrue(page.contains("LV6 (you're LV4)"), page);
+        assertTrue(page.contains("runs from a socket"));
+        assertTrue(page.contains("12 s cooldown"));
+    }
+
+    @Test
+    void manStripsMarkdownAndFindsMembersEventsHooksAndCommands() {
+        EdgeShell shell = new EdgeShell();
+        shell.setColumns(200);
+        shell.submit("man access", data(), 0);
+        assertTrue(text(shell).contains("See Cyber Combat."), "links become their text");
+        assertFalse(text(shell).contains("`"));
+        shell.submit("clear", data(), 0);
+        shell.submit("man on_session_opened", data(), 0);
+        assertTrue(text(shell).contains("program event") && text(shell).contains("kernel hook"), "it is both");
+        shell.submit("clear", data(), 0);
+        shell.submit("man scan", data(), 0);
+        assertTrue(text(shell).contains("shell command"));
+        shell.submit("clear", data(), 0);
+        shell.submit("man nonsense", data(), 0);
+        assertTrue(text(shell).contains("man: nothing on nonsense"));
+    }
+
+    @Test
+    void manWrapsLongTextToTheTerminal() {
+        EdgeShell shell = new EdgeShell();
+        shell.setColumns(30);
+        shell.submit("man on_access_request", data(), 0);
+        assertTrue(shell.lines().size() > 4);
+        shell.lines().stream().skip(2).forEach(line -> assertTrue(line.text().length() <= 30, line.text()));
+    }
+
+    @Test
+    void manNamespaceListsItsApis() {
+        EdgeShell shell = new EdgeShell();
+        shell.submit("man remote", data(), 0);
+        EdgeShell.Seg access = shell.lines().stream().flatMap(line -> line.segs().stream())
+                .filter(seg -> seg.text().startsWith("remote.access(")).findFirst().orElseThrow();
+        assertEquals("man remote.access", access.command());
+        assertEquals("man remote.access", shell.complete("man remote.acc", data(), 0));
+    }
+
+    @Test
+    void catAsksForOwnFilesAndRefusesPresets() {
+        EdgeShell shell = new EdgeShell();
+        shell.submit("cat breach.lua", data(), 0);
+        shell.submit("cat Adrenaline Shot", data(), 0);
+        assertEquals(List.of(new EdgeShell.Request("CAT", "Breach")), shell.drain());
+        assertTrue(shell.lines().getLast().text().contains("locked"));
+    }
+
+    @Test
+    void aCatFilePrintsNumberedWithItsIndentation() {
+        EdgeShell shell = new EdgeShell();
+        shell.printFile("Breach", "program { name = \"Breach\" }\n\nfunction on_start()\n\tsys.log(\"hi\") -- go\nend\n", 0);
+        List<String> lines = shell.lines().stream().map(EdgeShell.Line::text).toList();
+        assertTrue(lines.getFirst().contains("Breach.lua · 5 lines"));
+        assertEquals("4    sys.log(\"hi\") -- go", lines.get(4));
+        assertEquals("5  end", lines.get(5));
+    }
+
+    @Test
+    void scanAsksTheServerAndPrintsWhatItFound() {
+        EdgeShell shell = new EdgeShell();
+        shell.submit("scan", data(), 0);
+        shell.submit("scan 8", data(), 0);
+        shell.submit("scan far", data(), 0);
+        assertEquals(List.of(new EdgeShell.Request("SCAN", ""), new EdgeShell.Request("SCAN", "8")), shell.drain());
+        assertTrue(shell.lines().getLast().text().contains("number of blocks"));
+        shell.scanned(20, List.of(new EdgeShell.Gateway("10.1.2.3", "Wired Zombie", false, 2, 6.25)), 0);
+        String out = text(shell);
+        assertTrue(out.contains("10.1.2.3") && out.contains("Wired Zombie") && out.contains("LV2") && out.contains("6.3m"), out);
+        assertTrue(out.contains("1 gateway within 20 blocks"));
+        shell.scanned(20, List.of(), 0);
+        assertTrue(shell.lines().getLast().text().contains("no gateways within 20 blocks"));
+    }
+
+    @Test
+    void editingANewNameOffersToCreateIt() {
+        EdgeShell shell = new EdgeShell();
+        shell.submit("edit Hello.lua", data(), 0);
+        shell.submit("edit Adrenaline Shot", data(), 0);
+        shell.submit("burn Hello", data(), 0);
+        shell.submit("edit not a name!", data(), 0);
+        assertEquals(List.of(new EdgeShell.Request("EDIT_NEW", "Hello")), shell.drain());
+        List<String> lines = shell.lines().stream().map(EdgeShell.Line::text).toList();
+        assertTrue(lines.stream().anyMatch(line -> line.contains("Adrenaline Shot is a preset")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("burn: no file called Hello")));
+        assertTrue(lines.getLast().contains("edit: no file called not a name!"));
+    }
 }

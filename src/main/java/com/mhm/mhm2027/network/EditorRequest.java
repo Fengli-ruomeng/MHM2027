@@ -18,7 +18,9 @@ import net.minecraft.resources.Identifier;
  */
 public record EditorRequest(Action action, String name, String argument, String content, int requestId) implements CustomPacketPayload {
     public enum Action {
-        OPEN, SAVE, CREATE_PROGRAM, CREATE_KERNEL, RENAME, DELETE, CHECK
+        OPEN, SAVE, CREATE_PROGRAM, CREATE_KERNEL, RENAME, DELETE, CHECK,
+        /** Send a file for Edge's cat to print, without opening it in the editor. */
+        READ
     }
 
     /** Scripts are capped at 64 KB; this leaves room for multi-byte characters. */

@@ -113,4 +113,16 @@ class EdgeWindowsTest {
         EdgeWindows.Rect rect = windows.bounds(windows.get(breach).orElseThrow());
         assertTrue(rect.right() <= 306 && rect.bottom() <= 220);
     }
+
+    @Test
+    void theEditorCoversMostOfTheDesktopAndDoesntPushProgramsAside() {
+        EdgeWindows windows = desktop();
+        EdgeWindows.Window editor = windows.open(EdgeWindows.EDITOR, 0);
+        EdgeWindows.Rect rect = windows.bounds(editor);
+        assertEquals(windows.area().right(), rect.right());
+        assertEquals(windows.area().height(), rect.height());
+        assertTrue(rect.x() > windows.area().x(), "a strip of the terminal stays visible");
+        EdgeWindows.Window top = windows.open(EdgeWindows.TOP, 0);
+        assertEquals(windows.area().y(), windows.bounds(top).y(), "top still goes in the first gap of the right column");
+    }
 }

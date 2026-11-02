@@ -3,7 +3,6 @@ package com.mhm.mhm2027.terminal;
 import static org.squiddev.cobalt.ValueFactory.valueOf;
 import static org.squiddev.cobalt.ValueFactory.varargsOf;
 
-import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -281,7 +280,6 @@ final class Apis {
 
     /** How long remote.inspect takes: about a second, per the design. */
     private static final int INSPECT_TICKS = 20;
-    private static final int MAX_SCAN_RESULTS = 8;
 
     private static LuaTable remote(Terminal terminal, Supplier<ScriptHost> host) {
         LuaTable remote = new LuaTable();
@@ -290,11 +288,9 @@ final class Apis {
         api(remote, ApiSpec.REMOTE_SCAN, terminal, host, (player, args) -> {
             int range = Terminal.data(player).tier().scanRange();
             double radius = Math.clamp(args.arg(1).optDouble(range), 1, range);
-            List<LivingEntity> found = player.level().getEntitiesOfClass(LivingEntity.class, player.getBoundingBox().inflate(radius),
-                    entity -> Gateways.targetable(entity, player) && entity.distanceTo(player) <= radius);
-            found.sort(Comparator.comparingDouble(entity -> entity.distanceTo(player)));
+            List<LivingEntity> found = Gateways.around(player, radius, Gateways.MAX_SCAN_RESULTS);
             LuaTable list = new LuaTable();
-            for (int i = 0; i < Math.min(MAX_SCAN_RESULTS, found.size()); i++) {
+            for (int i = 0; i < found.size(); i++) {
                 list.rawset(i + 1, EntityHandles.of(found.get(i), player));
             }
             return list;
@@ -322,6 +318,7 @@ final class Apis {
     private static final class Inspection implements LuaSandbox.Awaitable {
         private final Terminal terminal;
         private final LuaValue target;
+        private final int totalTicks;
         private int ticksLeft;
         private Varargs result = Constants.NIL;
 
@@ -329,6 +326,7 @@ final class Apis {
             this.terminal = terminal;
             this.target = target;
             this.ticksLeft = terminal.kernel().settings().inspectTicks(INSPECT_TICKS);
+            this.totalTicks = Math.max(1, ticksLeft);
         }
 
         @Override
@@ -373,6 +371,22 @@ final class Apis {
         @Override
         public String state() {
             return "scanning";
+        }
+
+        @Override
+        public int totalTicks() {
+            return totalTicks;
+        }
+
+        @Override
+        public int ticksLeft() {
+            return Math.max(0, ticksLeft);
+        }
+
+        @Override
+        public String detail() {
+            EntityHandles.Handle handle = EntityHandles.handleOf(target);
+            return handle == null ? "" : handle.address();
         }
     }
 

@@ -49,7 +49,7 @@ Try `run Status` too: it prints your RAM, TOPS and programs in its window and st
 
 ## 4. Write your own
 
-Type `edit Hello` to create a file in the code editor. A program is a header plus the events it answers:
+Type `edit Hello`. The editor opens and asks for the new file's name, with Hello already filled in: press **Enter**. A program is a header plus the events it answers:
 
 ```lua
 program { name = "Hello", type = "resident", tops = 2 }
@@ -67,7 +67,7 @@ function on_timer()
 end
 ```
 
-The editor checks your code as you type and shows what it will cost. Save with **Ctrl+S**, press **Esc** to go back to Edge, then `run Hello`. [Scripting](Scripting) explains everything in this example.
+The editor checks your code as you type and shows what it will cost. Save with **Ctrl+S**, click the terminal on the left, then `run Hello`. [Scripting](Scripting) explains everything in this example. Stuck on a call? `man sys.every` in the terminal says what it does and costs.
 
 ## 5. Things that will catch you out
 

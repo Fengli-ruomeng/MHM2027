@@ -1,5 +1,7 @@
 package com.mhm.mhm2027.terminal;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import org.jspecify.annotations.Nullable;
@@ -25,7 +27,18 @@ import net.minecraft.world.phys.Vec3;
  * creates gateway data on it: ordinary vanilla mobs stay untouched (LV-1, no gateway).
  */
 public final class Gateways {
+    /** remote.scan and Edge's scan list at most this many gateways. */
+    public static final int MAX_SCAN_RESULTS = 8;
+
     private Gateways() {
+    }
+
+    /** The gateways a player could aim at within {@code radius} blocks, nearest first, at most {@code max}. */
+    public static List<LivingEntity> around(ServerPlayer player, double radius, int max) {
+        List<LivingEntity> found = new ArrayList<>(player.level().getEntitiesOfClass(LivingEntity.class,
+                player.getBoundingBox().inflate(radius), entity -> targetable(entity, player) && entity.distanceTo(player) <= radius));
+        found.sort(Comparator.comparingDouble(entity -> entity.distanceTo(player)));
+        return found.size() > max ? List.copyOf(found.subList(0, max)) : found;
     }
 
     /** The entity's gateway, or null for anything without one: vanilla mobs, Null players, spectators, the dead. */

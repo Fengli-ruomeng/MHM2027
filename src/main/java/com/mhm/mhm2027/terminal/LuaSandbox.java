@@ -134,6 +134,21 @@ public final class LuaSandbox {
         default String state() {
             return "waiting";
         }
+
+        /** How many ticks the whole wait takes, for the bar in the program's window; 0 for no bar. */
+        default int totalTicks() {
+            return 0;
+        }
+
+        /** Ticks still to go. */
+        default int ticksLeft() {
+            return 0;
+        }
+
+        /** What it's working on, for the bar's label: a target's address, and how. */
+        default String detail() {
+            return "";
+        }
     }
 
     @FunctionalInterface
