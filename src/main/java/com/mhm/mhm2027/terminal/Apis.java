@@ -438,7 +438,12 @@ final class Apis {
             }
             line.append(text(args.arg(i)));
         }
-        terminal.log(caller == null ? "?" : caller.name(), clip(line.toString()));
+        if (caller instanceof Kernel kernel) {
+            // A kernel has no window of its own: its hooks write to kernel.log, under its name.
+            terminal.log("kernel", kernel.name() + ": " + clip(line.toString()));
+        } else {
+            terminal.log(caller == null ? "?" : caller.name(), clip(line.toString()));
+        }
     }
 
     /** How a value prints in the log: handles by their address, everything else as Lua shows it. */

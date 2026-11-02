@@ -213,6 +213,8 @@ final class EdgeEditor {
             action.run();
             return;
         }
+        // The question replaces any name prompt, so it's never hidden behind one.
+        prompt = null;
         confirm = new Confirm(tr("mhm2027.editor.unsaved_title"), tr("mhm2027.editor.unsaved_message", file + ".lua"), "discard", () -> {
             savedVersion = document.version();
             action.run();

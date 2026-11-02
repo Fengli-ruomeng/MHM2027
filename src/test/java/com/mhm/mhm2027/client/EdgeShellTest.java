@@ -66,7 +66,7 @@ class EdgeShellTest {
         shell.submit("log", data(), 0);
         shell.submit("log watcher", data(), 0);
         shell.submit("log Nobody", data(), 0);
-        assertEquals(List.of(new EdgeShell.Request("WINDOW", EdgeWindows.KERNEL), new EdgeShell.Request("WINDOW", "Watcher")),
+        assertEquals(List.of(new EdgeShell.Request("WINDOW", EdgeWindows.KERNEL), new EdgeShell.Request("WINDOW", EdgeWindows.program("Watcher"))),
                 shell.drain());
         assertTrue(shell.lines().getLast().text().contains("nothing from Nobody"));
     }

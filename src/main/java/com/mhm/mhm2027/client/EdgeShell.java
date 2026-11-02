@@ -95,7 +95,7 @@ public final class EdgeShell {
 
     /**
      * Something for the screen to do: a panel request by its action name (START, SCAN, ...), or
-     * one the screen handles itself: EDIT, CAT, WINDOW, FOLDER or EXIT.
+     * one the screen handles itself: EDIT, CAT, WINDOW (with a window id), FOLDER or EXIT.
      */
     public record Request(String action, String argument) {
     }
@@ -310,7 +310,7 @@ public final class EdgeShell {
             error("log: nothing from " + name + " yet · try ps");
             return;
         }
-        requests.add(new Request("WINDOW", output.get()));
+        requests.add(new Request("WINDOW", EdgeWindows.program(output.get())));
         print(Seg.of("opened " + output.get(), DIM));
     }
 

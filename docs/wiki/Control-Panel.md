@@ -54,7 +54,7 @@ Edge keeps the windows of the last 8 programs that ended.
 | PEAK | The most it has used in a tick |
 | RAM | Its RAM |
 
-**×** at the end of a row stops that program. The last line is your kernel's own reserve. Use top to tune a program's `tops`: reserve a little more than its USE.
+In a narrow window, TYPE, PEAK and RES drop out, in that order. **×** at the end of a row stops that program. The last line is your kernel's own reserve. Use top to tune a program's `tops`: reserve a little more than its USE.
 
 ## Commands
 

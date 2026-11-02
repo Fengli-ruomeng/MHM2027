@@ -172,10 +172,7 @@ public class EdgeDesktopScreen extends Screen {
             }
             case "CAT" -> ClientPacketDistributor.sendToServer(EditorRequest.of(EditorRequest.Action.READ, request.argument()));
             case "EXIT" -> onClose();
-            case "WINDOW" -> windows.open(switch (request.argument()) {
-                case EdgeWindows.KERNEL, EdgeWindows.TOP -> request.argument();
-                default -> EdgeWindows.program(request.argument());
-            }, now);
+            case "WINDOW" -> windows.open(request.argument(), now);
             case "START" -> start(request.argument(), now);
             case "FOLDER" -> {
                 Path folder = localFolder();
@@ -588,10 +585,13 @@ public class EdgeDesktopScreen extends Screen {
         text(graphics, String.valueOf(status.heat()), x, y, status.heat() >= 70 ? EdgeShell.ORANGE : EdgeShell.TEXT);
         y += LINE_HEIGHT + 2;
 
-        int[] columns = {0, 74, 124, 196, 222, 248, 274};
-        String[] heads = {"NAME", "TYPE", "STATE", "RES", "USE", "PEAK", "RAM"};
-        for (int i = 0; i < heads.length; i++) {
-            text(graphics, heads[i], left + columns[i], y, EdgeShell.GREY);
+        String stop = "×";
+        int stopX = right - font.width(stop) - 2;
+        List<TopColumn> columns = topColumns(stopX - 4 - left);
+        int columnX = left;
+        for (TopColumn column : columns) {
+            text(graphics, column.head(), columnX, y, EdgeShell.GREY);
+            columnX += column.width();
         }
         graphics.fill(left, y + 9, right, y + 10, RULE);
         y += LINE_HEIGHT + 1;
@@ -601,22 +601,27 @@ public class EdgeDesktopScreen extends Screen {
         int visible = Math.max(1, (bounds.bottom() - 5 - LINE_HEIGHT - y) / LINE_HEIGHT);
         window.setScroll(Math.min(window.scroll(), Math.max(0, rows.size() - visible)));
         for (PanelSnapshot.ProgramRow row : rows.subList(window.scroll(), Math.min(rows.size(), window.scroll() + visible))) {
-            String name = font.plainSubstrByWidth(row.name(), columns[1] - 6, false);
-            boolean hovered = inside(mouseX, mouseY, left - 2, y - 1, columns[1] - 4, LINE_HEIGHT);
-            if (hovered) {
-                graphics.fill(left - 2, y - 1, left + columns[1] - 4, y + LINE_HEIGHT - 1, HOVER);
+            columnX = left;
+            for (TopColumn column : columns) {
+                int cellWidth = column.width() - 4;
+                switch (column.head()) {
+                    case "NAME" -> {
+                        if (inside(mouseX, mouseY, left - 2, y - 1, cellWidth, LINE_HEIGHT)) {
+                            graphics.fill(left - 2, y - 1, left + cellWidth - 2, y + LINE_HEIGHT - 1, HOVER);
+                        }
+                        text(graphics, font.plainSubstrByWidth(row.name(), cellWidth - 2, false), left, y, EdgeShell.TEXT);
+                        hits.add(new Hit(left - 2, y - 1, cellWidth, LINE_HEIGHT, () -> windows.open(EdgeWindows.program(row.name()), Util.getMillis())));
+                    }
+                    case "TYPE" -> text(graphics, row.type(), columnX, y, EdgeShell.DIM);
+                    case "STATE" -> text(graphics, font.plainSubstrByWidth(row.state(), cellWidth, false), columnX, y, stateColor(row.state()));
+                    case "RES" -> text(graphics, String.valueOf(row.tops()), columnX, y, EdgeShell.DIM);
+                    case "USE" -> text(graphics, String.format(Locale.ROOT, "%.1f", row.averageTops()), columnX, y,
+                            row.averageTops() > row.tops() * 0.9f ? EdgeShell.ORANGE : EdgeShell.TEXT);
+                    case "PEAK" -> text(graphics, String.format(Locale.ROOT, "%.1f", row.peakTops()), columnX, y, EdgeShell.DIM);
+                    default -> text(graphics, row.ramMb() + "M", columnX, y, EdgeShell.DIM);
+                }
+                columnX += column.width();
             }
-            text(graphics, name, left, y, EdgeShell.TEXT);
-            hits.add(new Hit(left - 2, y - 1, columns[1] - 4, LINE_HEIGHT, () -> windows.open(EdgeWindows.program(row.name()), Util.getMillis())));
-            text(graphics, row.type(), left + columns[1], y, EdgeShell.DIM);
-            text(graphics, font.plainSubstrByWidth(row.state(), columns[3] - columns[2] - 4, false), left + columns[2], y, stateColor(row.state()));
-            text(graphics, String.valueOf(row.tops()), left + columns[3], y, EdgeShell.DIM);
-            boolean hot = row.averageTops() > row.tops() * 0.9f;
-            text(graphics, String.format(Locale.ROOT, "%.1f", row.averageTops()), left + columns[4], y, hot ? EdgeShell.ORANGE : EdgeShell.TEXT);
-            text(graphics, String.format(Locale.ROOT, "%.1f", row.peakTops()), left + columns[5], y, EdgeShell.DIM);
-            int ramEnd = text(graphics, row.ramMb() + "M", left + columns[6], y, EdgeShell.DIM);
-            String stop = "×";
-            int stopX = Math.max(ramEnd + 6, right - font.width(stop) - 2);
             boolean stopHovered = inside(mouseX, mouseY, stopX - 2, y - 1, font.width(stop) + 4, LINE_HEIGHT);
             text(graphics, stop, stopX, y, stopHovered ? EdgeShell.TEXT : EdgeShell.PINK);
             hits.add(new Hit(stopX - 2, y - 1, font.width(stop) + 4, LINE_HEIGHT,
@@ -634,6 +639,30 @@ public class EdgeDesktopScreen extends Screen {
         x = text(graphics, kernel.name(), x, kernelY, EdgeShell.VIOLET);
         text(graphics, "  " + kernel.tops() + " TOPS · " + kernel.ramMb() + "M reserved", x, kernelY, EdgeShell.GREY);
         graphics.disableScissor();
+    }
+
+    /**
+     * top's columns for a table {@code width} wide, NAME first and taking what's left. A narrow
+     * window drops TYPE first, then PEAK, then RES, so the numbers that matter always fit.
+     */
+    private List<TopColumn> topColumns(int width) {
+        int gap = 6;
+        List<TopColumn> columns = new ArrayList<>(List.of(
+                new TopColumn("TYPE", font.width("transient") + gap),
+                new TopColumn("STATE", font.width("escalating") + gap),
+                new TopColumn("RES", font.width("RES") + gap),
+                new TopColumn("USE", font.width("99.9") + gap),
+                new TopColumn("PEAK", font.width("PEAK") + gap),
+                new TopColumn("RAM", font.width("999M") + gap)));
+        int minName = 48;
+        for (String optional : List.of("TYPE", "PEAK", "RES")) {
+            if (minName + columns.stream().mapToInt(TopColumn::width).sum() <= width) {
+                break;
+            }
+            columns.removeIf(column -> column.head().equals(optional));
+        }
+        columns.addFirst(new TopColumn("NAME", Math.max(minName, width - columns.stream().mapToInt(TopColumn::width).sum())));
+        return columns;
     }
 
     private void footer(GuiGraphicsExtractor graphics, EdgeWindows.Window window, ProgramOutputs.Output output, int left, int right, int y,
@@ -1156,6 +1185,9 @@ public class EdgeDesktopScreen extends Screen {
     }
 
     private record Pill(String id, String label, int dot, int x, int width) {
+    }
+
+    private record TopColumn(String head, int width) {
     }
 
     /**
