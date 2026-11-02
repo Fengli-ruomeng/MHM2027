@@ -73,6 +73,20 @@ end
 
 Fields: `address`, `kind`, `name`, `is_player`, `distance`, `level`. A handle goes stale when its entity dies or leaves range: then `distance` and `level` read nil, and calls that take it fail.
 
+## The world around you
+
+`world` reads what's around you: `world.time()`, `world.day()`, `world.weather()`, `world.light()`, `world.biome()`, `world.dimension()`, the blocks near your feet with `world.block(dx, dy, dz)` (LV1), and creatures without a gateway with `world.mobs()`. `me` adds what you carry and how you are: `me.inventory()`, `me.held()`, `me.effects()`, `me.air()` and `me.xp()`.
+
+```lua
+local time, night = world.time()
+local light, fromBlocks = world.light()
+if night and fromBlocks == 0 then
+  sys.notify("Night, and no torch near you")
+end
+```
+
+None of these change anything, so none need a socket. Kernel hooks may call `world.time`, `world.day` and `world.weather`. See [Quality-of-Life Programs](Quality-Of-Life-Programs#what-edge-can-and-cant-see) for the limits, and complete examples.
+
 ## Costs
 
 The editor shows a program's cost while you write it:

@@ -21,7 +21,7 @@ Almost every program fits one of three shapes:
 ## 2. Find the pieces
 
 - **The events** (the "when"): `man events` in the terminal lists them. On page 4 you used `on_hit_taken` and `on_timer`.
-- **The APIs** (the "do"): `man me`, `man sys` and `man remote` list each group. `man me.speed_boost` explains one, including the level it needs: red if you're not there yet.
+- **The APIs** (the "do"): `man me`, `man sys`, `man remote` and `man world` list each group. `man me.speed_boost` explains one, including the level it needs: red if you're not there yet.
 - **In the editor**, **Ctrl+Space** suggests APIs and events as you type.
 
 Two questions to ask about each API you pick:
@@ -31,7 +31,7 @@ Two questions to ask about each API you pick:
 
 ## 3. Book the right TOPS
 
-`tops` in the header is how fast your program can think: each TOPS lets it run 20 Lua instructions per tick, and an API call costs 10 to 40 of those. A program that runs out of budget isn't broken, it just finishes next tick.
+`tops` in the header is how fast your program can think: each TOPS lets it run 20 Lua instructions per tick, and an API call costs 10 to 80 of those. A program that runs out of budget isn't broken, it just finishes next tick.
 
 | The program... | Book |
 | --- | --- |
