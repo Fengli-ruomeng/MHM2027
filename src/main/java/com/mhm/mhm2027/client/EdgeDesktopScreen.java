@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.jspecify.annotations.Nullable;
@@ -84,6 +85,8 @@ public class EdgeDesktopScreen extends Screen {
     private static final Set<String> NEEDS_EDGE = Set.of("EDIT", "EDIT_NEW", "CAT", "WINDOW", "FOLDER");
 
     private final List<Hit> hits = new ArrayList<>();
+    /** Output lines laid out over rows, by line and width, so wrapping isn't redone every frame. */
+    private final Map<WrapKey, List<List<TextWrap.Piece>>> wrapped = new HashMap<>();
     private List<Pill> pills = List.of();
     private String input = "";
     private int cursor;
@@ -463,15 +466,28 @@ public class EdgeDesktopScreen extends Screen {
         int visible = Math.max(1, (promptY - 3 - top) / LINE_HEIGHT);
         shell.setColumns((right - left) / Math.max(1, font.width("0")));
 
-        // Output, newest at the bottom; the wheel scrolls back.
+        // Output, newest at the bottom, wrapped to the window; the wheel scrolls back a row at a time.
+        int wrapWidth = right - left;
         List<EdgeShell.Line> lines = shell.lines().stream().filter(line -> line.at() <= now).toList();
-        window.setScroll(Math.min(window.scroll(), Math.max(0, lines.size() - visible)));
-        int first = Math.max(0, lines.size() - visible - window.scroll());
+        int total = 0;
+        for (EdgeShell.Line line : lines) {
+            total += shellRows(line, wrapWidth).size();
+        }
+        window.setScroll(Math.min(window.scroll(), Math.max(0, total - visible)));
+        int skip = Math.max(0, total - visible - window.scroll());
         graphics.enableScissor(left, top, right, promptY - 2);
         int y = top;
-        for (EdgeShell.Line line : lines.subList(first, Math.min(lines.size(), first + visible))) {
-            drawLine(graphics, line, left, y, right, mouseX, mouseY, now);
-            y += LINE_HEIGHT;
+        int drawn = 0;
+        for (EdgeShell.Line line : lines) {
+            for (List<TextWrap.Piece> row : shellRows(line, wrapWidth)) {
+                if (skip > 0) {
+                    skip--;
+                } else if (drawn < visible) {
+                    drawRow(graphics, line, row, left, y, mouseX, mouseY, now);
+                    y += LINE_HEIGHT;
+                    drawn++;
+                }
+            }
         }
         graphics.disableScissor();
         if (window.scroll() > 0) {
@@ -501,15 +517,25 @@ public class EdgeDesktopScreen extends Screen {
         }
     }
 
-    /** One output line, typing itself in; clickable runs get a hover box. */
-    private void drawLine(GuiGraphicsExtractor graphics, EdgeShell.Line line, int x, int y, int right, int mouseX, int mouseY, long now) {
+    /**
+     * One row of an output line, typing itself in; clickable runs get a hover box. A clickable run
+     * split over two rows is clickable on both.
+     */
+    private void drawRow(GuiGraphicsExtractor graphics, EdgeShell.Line line, List<TextWrap.Piece> row, int left, int y,
+                         int mouseX, int mouseY, long now) {
         int budget = (int) ((now - line.at()) / TYPE_MILLIS);
-        for (EdgeShell.Seg seg : line.segs()) {
-            if (budget <= 0 || x >= right) {
+        for (TextWrap.Piece piece : row) {
+            EdgeShell.Seg seg = line.segs().get(piece.run());
+            int before = piece.start();
+            for (int run = 0; run < piece.run(); run++) {
+                before += line.segs().get(run).text().length();
+            }
+            int shown = Math.clamp(budget - before, 0, piece.end() - piece.start());
+            if (shown == 0) {
                 return;
             }
-            String text = seg.text().length() > budget ? seg.text().substring(0, budget) : seg.text();
-            budget -= seg.text().length();
+            String text = seg.text().substring(piece.start(), piece.start() + shown);
+            int x = left + piece.x();
             int segWidth = font.width(text);
             if (seg.clickable()) {
                 boolean hovered = inside(mouseX, mouseY, x - 1, y - 1, segWidth + 2, LINE_HEIGHT);
@@ -520,8 +546,23 @@ public class EdgeDesktopScreen extends Screen {
                 hits.add(new Hit(x - 1, y - 1, segWidth + 2, LINE_HEIGHT, () -> click(seg)));
             }
             text(graphics, text, x, y, seg.color());
-            x += segWidth;
         }
+    }
+
+    private List<List<TextWrap.Piece>> shellRows(EdgeShell.Line line, int width) {
+        return rows(line, width, () -> line.segs().stream().map(EdgeShell.Seg::text).toList());
+    }
+
+    /** A program's or kernel.log's line: its time, then the text, which wraps under the text. */
+    private List<List<TextWrap.Piece>> logRows(ProgramOutputs.Line line, int width) {
+        return rows(line, width, () -> List.of(time(line.minute()) + " ", line.text()));
+    }
+
+    private List<List<TextWrap.Piece>> rows(Object line, int width, Supplier<List<String>> runs) {
+        if (wrapped.size() > 4000) {
+            wrapped.clear();
+        }
+        return wrapped.computeIfAbsent(new WrapKey(line, width), key -> TextWrap.layout(runs.get(), width, font::width));
     }
 
     /**
@@ -554,8 +595,13 @@ public class EdgeDesktopScreen extends Screen {
         if (output != null) {
             typed.update(output, now);
         }
-        window.setScroll(Math.min(window.scroll(), Math.max(0, lines.size() - visible)));
-        int first = Math.max(0, lines.size() - visible - window.scroll());
+        int wrapWidth = right - left;
+        int total = 0;
+        for (ProgramOutputs.Line line : lines) {
+            total += logRows(line, wrapWidth).size();
+        }
+        window.setScroll(Math.min(window.scroll(), Math.max(0, total - visible)));
+        int skip = Math.max(0, total - visible - window.scroll());
         int base = output == null ? 0 : output.total() - lines.size();
         long budget = (now - typed.start) / TYPE_MILLIS;
         graphics.enableScissor(left, top, right, bottom);
@@ -563,9 +609,10 @@ public class EdgeDesktopScreen extends Screen {
             text(graphics, output == null ? "waiting for output..." : "nothing printed yet", left, top, EdgeShell.GREY);
         }
         int y = top;
-        for (int i = first; i < Math.min(lines.size(), first + visible); i++) {
+        int drawn = 0;
+        for (int i = 0; i < lines.size() && drawn < visible; i++) {
             ProgramOutputs.Line line = lines.get(i);
-            String text = line.text();
+            int shown = line.text().length();
             if (base + i >= typed.from) {
                 // New lines type in one after another.
                 long before = 0;
@@ -576,11 +623,17 @@ public class EdgeDesktopScreen extends Screen {
                 if (typedSoFar <= 0) {
                     break;
                 }
-                text = text.substring(0, (int) Math.min(typedSoFar, text.length()));
+                shown = (int) Math.min(typedSoFar, shown);
             }
-            int x = text(graphics, time(line.minute()) + " ", left, y, EdgeShell.GREY);
-            text(graphics, text, x, y, lineColor(line.text()));
-            y += LINE_HEIGHT;
+            for (List<TextWrap.Piece> row : logRows(line, wrapWidth)) {
+                if (skip > 0) {
+                    skip--;
+                } else if (drawn < visible) {
+                    logRow(graphics, line, row, shown, lineColor(line.text()), left, y);
+                    y += LINE_HEIGHT;
+                    drawn++;
+                }
+            }
         }
         graphics.disableScissor();
 
@@ -768,19 +821,44 @@ public class EdgeDesktopScreen extends Screen {
         int bottom = bounds.bottom() - 5;
         int visible = Math.max(1, (bottom - top) / LINE_HEIGHT);
         List<ProgramOutputs.Line> lines = PanelState.snapshot().kernelLog();
-        window.setScroll(Math.min(window.scroll(), Math.max(0, lines.size() - visible)));
-        int first = Math.max(0, lines.size() - visible - window.scroll());
+        int wrapWidth = right - left;
+        int total = 0;
+        for (ProgramOutputs.Line line : lines) {
+            total += logRows(line, wrapWidth).size();
+        }
+        window.setScroll(Math.min(window.scroll(), Math.max(0, total - visible)));
+        int skip = Math.max(0, total - visible - window.scroll());
         graphics.enableScissor(left, top, right, bottom);
         if (lines.isEmpty()) {
             text(graphics, "nothing yet", left, top, EdgeShell.GREY);
         }
         int y = top;
-        for (ProgramOutputs.Line line : lines.subList(first, Math.min(lines.size(), first + visible))) {
-            int x = text(graphics, time(line.minute()) + " ", left, y, EdgeShell.GREY);
-            text(graphics, line.text(), x, y, kernelColor(line.text()));
-            y += LINE_HEIGHT;
+        int drawn = 0;
+        for (ProgramOutputs.Line line : lines) {
+            for (List<TextWrap.Piece> row : logRows(line, wrapWidth)) {
+                if (skip > 0) {
+                    skip--;
+                } else if (drawn < visible) {
+                    logRow(graphics, line, row, line.text().length(), kernelColor(line.text()), left, y);
+                    y += LINE_HEIGHT;
+                    drawn++;
+                }
+            }
         }
         graphics.disableScissor();
+    }
+
+    /** One row of a log line: the time in grey, then up to {@code shown} characters of the text. */
+    private void logRow(GuiGraphicsExtractor graphics, ProgramOutputs.Line line, List<TextWrap.Piece> row, int shown, int color,
+                        int left, int y) {
+        String time = time(line.minute()) + " ";
+        for (TextWrap.Piece piece : row) {
+            boolean isTime = piece.run() == 0;
+            int end = isTime ? piece.end() : Math.min(piece.end(), shown);
+            if (end > piece.start()) {
+                text(graphics, (isTime ? time : line.text()).substring(piece.start(), end), left + piece.x(), y, isTime ? EdgeShell.GREY : color);
+            }
+        }
     }
 
     private void taskbar(GuiGraphicsExtractor graphics, int mouseX, int mouseY, long now) {
@@ -965,7 +1043,8 @@ public class EdgeDesktopScreen extends Screen {
         return switch (state) {
             case "idle", "sleeping" -> EdgeShell.GREY;
             case "scanning", "accessing", "escalating" -> EdgeShell.CYAN;
-            default -> state.startsWith("paused") ? EdgeShell.ORANGE : EdgeShell.TEXT;
+            case "over budget" -> EdgeShell.ORANGE;
+            default -> EdgeShell.TEXT;
         };
     }
 
@@ -1253,6 +1332,10 @@ public class EdgeDesktopScreen extends Screen {
     }
 
     private record TopColumn(String head, int width) {
+    }
+
+    /** A wrapped line is reused while its window keeps the same width. */
+    private record WrapKey(Object line, int width) {
     }
 
     /**

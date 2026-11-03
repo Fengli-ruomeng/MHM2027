@@ -420,15 +420,11 @@ final class Apis {
 
     private static LuaTable world(Terminal terminal, Supplier<ScriptHost> host) {
         LuaTable world = new LuaTable();
-        api(world, ApiSpec.WORLD_TIME, terminal, host, (player, args) -> Senses.clockTicks(player)
-                .<Varargs>map(ticks -> {
-                    int time = WorldRules.timeOfDay(ticks);
-                    return varargsOf(valueOf(time), valueOf(WorldRules.isNight(time)));
-                })
-                .orElse(Constants.NIL));
-        api(world, ApiSpec.WORLD_DAY, terminal, host, (player, args) -> Senses.clockTicks(player)
-                .<Varargs>map(ticks -> valueOf((double) WorldRules.day(ticks)))
-                .orElse(Constants.NIL));
+        api(world, ApiSpec.WORLD_TIME, terminal, host, (player, args) -> {
+            int time = WorldRules.timeOfDay(Senses.clockTicks(player));
+            return varargsOf(valueOf(time), valueOf(WorldRules.isNight(time)));
+        });
+        api(world, ApiSpec.WORLD_DAY, terminal, host, (player, args) -> valueOf((double) WorldRules.day(Senses.clockTicks(player))));
         api(world, ApiSpec.WORLD_WEATHER, terminal, host, (player, args) -> valueOf(Senses.weather(player)));
         api(world, ApiSpec.WORLD_LIGHT, terminal, host, (player, args) ->
                 varargsOf(valueOf(Senses.light(player)), valueOf(Senses.blockLight(player))));
@@ -478,6 +474,10 @@ final class Apis {
         // Install refuses these too, but a table can be reached by other names than the one it was scanned under.
         if (caller.isKernel() && !spec.kernel()) {
             throw new LuaError(spec.id() + " can't be used in a kernel");
+        }
+        // The same goes for body changes: only a call install saw puts the program in a socket.
+        if (spec.needsSlot() && !caller.mayChangeBody()) {
+            throw new LuaError(spec.id() + " changes your body: write it as " + spec.id() + "(...) so the program runs from a socket");
         }
         ServerPlayer player = player(terminal);
         GatewayTier tier = Terminal.data(player).tier();

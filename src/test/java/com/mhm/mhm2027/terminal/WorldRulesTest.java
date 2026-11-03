@@ -10,11 +10,11 @@ class WorldRulesTest {
     @Test
     void theClockWrapsIntoDaysAndATimeOfDay() {
         assertEquals(0, WorldRules.timeOfDay(0));
-        assertEquals(0, WorldRules.day(0));
+        assertEquals(1, WorldRules.day(0));
         assertEquals(6000, WorldRules.timeOfDay(3 * 24000L + 6000));
-        assertEquals(3, WorldRules.day(3 * 24000L + 6000));
+        assertEquals(4, WorldRules.day(3 * 24000L + 6000));
         assertEquals(23999, WorldRules.timeOfDay(24000L * 1_000_000 - 1), "a long-running world doesn't overflow");
-        assertEquals(999_999, WorldRules.day(24000L * 1_000_000 - 1));
+        assertEquals(1_000_000, WorldRules.day(24000L * 1_000_000 - 1));
     }
 
     @Test

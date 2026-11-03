@@ -32,7 +32,7 @@ Players see a live `top`-style view in the terminal, which is also how they tune
 | Program | Type | RAM | TOPS reserved | TOPS used | State |
 | --- | --- | --- | --- | --- | --- |
 | Adrenaline | resident | 6 MB | 4 | 0.2 avg, 3 peak | idle |
-| Sweep | transient | 12 MB | 10 | 10 | paused (over budget) |
+| Sweep | transient | 12 MB | 10 | 10 | over budget |
 
 ## File structure
 

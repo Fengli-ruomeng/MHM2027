@@ -34,6 +34,8 @@ public final class Program implements ScriptHost {
     private static final int MAX_QUEUED_EVENTS = 8;
     private static final int MIN_TIMER_TICKS = 5;
     private static final int PEAK_WINDOW_TICKS = 100;
+    /** Busy for this long in a row (2 s) and a program is over budget. */
+    private static final int OVER_BUDGET_TICKS = 40;
 
     private final String id;
     private final String name;
@@ -61,6 +63,8 @@ public final class Program implements ScriptHost {
     private int timerTicks;
     private long nextTimer;
     private boolean pausedLastTick;
+    /** Ticks in a row it ran out of budget: a big job spreads over a few, a runaway never stops. */
+    private int pausedTicks;
     private double averageTops;
     private double peakTops;
     private double windowPeak;
@@ -160,6 +164,7 @@ public final class Program implements ScriptHost {
         // A program waiting on a call (sleep, scan, access) does nothing else until it returns.
         if (awaiting != null) {
             if (!awaiting.tick()) {
+                pausedTicks = 0;
                 recordUsage(0);
                 return true;
             }
@@ -199,6 +204,7 @@ public final class Program implements ScriptHost {
             terminal.notifyCrash(this);
             return false;
         }
+        pausedTicks = pausedLastTick ? pausedTicks + 1 : 0;
 
         recordUsage((double) used / instructionsPerTops);
 
@@ -287,6 +293,11 @@ public final class Program implements ScriptHost {
         return needsSlot;
     }
 
+    @Override
+    public boolean mayChangeBody() {
+        return needsSlot && type != ProgramType.QUERY;
+    }
+
     /** Its rank under a priority kernel, 1 to 9: higher runs first and is starved last. */
     public int priority() {
         return priority;
@@ -314,7 +325,11 @@ public final class Program implements ScriptHost {
         return awaiting;
     }
 
-    /** idle, running, sleeping, waiting or paused, for the ps view. */
+    /**
+     * idle, running, a wait (sleeping, scanning...), busy or over budget, for the ps view. Busy is
+     * a job bigger than one tick's budget, carrying on next tick: normal. Over budget is being
+     * busy for {@link #OVER_BUDGET_TICKS} straight, which means it can't keep up.
+     */
     public String state(long now) {
         if (current == null) {
             return "idle";
@@ -322,7 +337,10 @@ public final class Program implements ScriptHost {
         if (awaiting != null) {
             return awaiting.state();
         }
-        return pausedLastTick ? "paused (over budget)" : "running";
+        if (pausedLastTick) {
+            return pausedTicks >= OVER_BUDGET_TICKS ? "over budget" : "busy";
+        }
+        return "running";
     }
 
     private record QueuedEvent(String name, Supplier<Varargs> args) {

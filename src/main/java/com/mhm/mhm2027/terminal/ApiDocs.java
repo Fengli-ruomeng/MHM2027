@@ -55,7 +55,7 @@ public final class ApiDocs {
         APIS.put("sys.end_session", "Close a session someone holds on you. Costs Buffer.");
         APIS.put("sys.reboot", "Reboot: every program stops and every session on you ends, with a short debuff.");
         APIS.put("world.time", "The Overworld's time of day, 0 to 23999 (0 sunrise, 6000 noon, 12000 sunset, 18000 midnight), and whether it's night (13000 to 23000).");
-        APIS.put("world.day", "Which day it is: 0 on the world's first day, then 1, 2 and so on.");
+        APIS.put("world.day", "Which day it is, counting from 1 like Edge's clock: 1 on the world's first day.");
         APIS.put("world.weather", "The weather where you are: \"clear\", \"rain\" or \"thunder\". Snow counts as rain.");
         APIS.put("world.light", "The light at your feet, 0 to 15, and how much of it comes from blocks such as torches. In the Overworld, monsters only spawn where that second number is 0.");
         APIS.put("world.biome", "The biome you're in, such as \"minecraft:plains\".");

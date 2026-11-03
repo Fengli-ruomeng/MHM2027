@@ -149,6 +149,11 @@ public final class Kernel implements ScriptHost {
     }
 
     @Override
+    public boolean mayChangeBody() {
+        return false;
+    }
+
+    @Override
     public int privilegeLevel() {
         return privilegeLevel;
     }

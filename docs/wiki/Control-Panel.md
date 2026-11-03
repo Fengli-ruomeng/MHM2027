@@ -17,6 +17,8 @@ Type a command and press **Enter**. Output types itself in. Underlined words are
 - some run at once, such as **[stop]** and **[log]** next to a program in `ps`;
 - others put a command in the prompt for you to check, such as a file name in `ls` (it fills in `run Breach`). Press Enter to go ahead.
 
+Long lines wrap to fit the window, and re-flow when you resize it. A wrapped line continues under its label (a file list under `programs`, a help line under its description), and a clickable word cut in two works on both rows. Only output text wraps: title bars, buttons, the prompt, progress bars and `top`'s table never do.
+
 Under the prompt are quick commands: `help`, `ls`, `ps`, `status`, `socket ls` and `flaws`, one click each.
 
 The keyboard goes to the window on top. Click a window to bring it forward. When the editor is on top, typing goes into your code; anywhere else, typing goes to the terminal and brings it forward.
@@ -50,7 +52,7 @@ Edge keeps the windows of the last 8 programs that ended.
 | NAME | Click it to open the program's window |
 | TYPE, STATE | As in `ps` |
 | RES | The TOPS it reserved in its header |
-| USE | The TOPS it actually used, on average. Orange when it's close to what it reserved, so it's being paused |
+| USE | The TOPS it actually used, on average. Orange when it's close to what it reserved, so it often has to finish next tick |
 | PEAK | The most it has used in a tick |
 | RAM | Its RAM |
 
@@ -128,7 +130,8 @@ The editor has keys of its own; see [The code editor](#the-code-editor).
 | sleeping | Inside `sys.sleep` |
 | scanning | Waiting for `remote.inspect`; its window shows a bar |
 | accessing, escalating | Waiting for an access attempt; its window shows a bar |
-| paused | It used its whole budget this tick and continues next tick |
+| busy | Its job is bigger than one tick's budget, so it carries on next tick. Normal for big jobs |
+| over budget | Busy for 2 seconds straight: it can't keep up. Book more TOPS, or do less each time |
 | finished, stopped, crashed | It has ended; its window says why |
 
 ## The code editor

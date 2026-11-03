@@ -913,10 +913,11 @@ public final class EdgeShell {
 
     private static int stateColor(String state) {
         return switch (state) {
-            case "running" -> TEXT;
+            case "running", "busy" -> TEXT;
             case "idle", "sleeping" -> DIM;
             case "scanning", "accessing", "escalating" -> CYAN;
-            default -> state.startsWith("paused") ? ORANGE : DIM;
+            case "over budget" -> ORANGE;
+            default -> DIM;
         };
     }
 

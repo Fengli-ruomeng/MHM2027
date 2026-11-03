@@ -271,7 +271,7 @@ Warns you when a monster comes within 8 blocks, even behind a wall, and names it
 
 ```lua
 -- Needs LV0.
-program { name = "Radar", type = "resident", tops = 4 }
+program { name = "Radar", type = "resident", tops = 8 }
 
 local CLOSE = 8          -- blocks
 local alarmed = false
@@ -282,13 +282,13 @@ end
 
 function on_timer()
   local nearest = nil
-  for _, mob in ipairs(world.mobs()) do      -- nearest first
+  for _, mob in ipairs(world.mobs(CLOSE)) do  -- only the ones within CLOSE, nearest first
     if mob.hostile then
       nearest = mob
       break
     end
   end
-  if nearest and nearest.distance <= CLOSE then
+  if nearest then
     if not alarmed then
       sys.notify(nearest.name .. ", " .. math.floor(nearest.distance) .. " m away")
       alarmed = true
@@ -300,6 +300,8 @@ end
 ```
 
 **The trick:** the list comes nearest first, so the first monster in it is the closest one, and `break` stops looking. Wired mobs have a gateway, so they're not in `world.mobs()`: add `remote.scan()` to catch those too.
+
+It books 8 TOPS because `world.mobs` is a big call: 80 instructions, a whole tick's budget for 4 TOPS. With less it still works, a tick later, and `ps` shows it as "busy" while it finishes.
 
 ## Lava: dig carefully (LV1)
 
@@ -340,7 +342,7 @@ function on_timer()
 end
 ```
 
-**The trick:** three loops inside each other visit every block in a box. Lava counts as see-through, so a lava pool shows up even behind a wall of stone; only a single lava block sealed in rock reads `"hidden"`. It books 6 TOPS because 100 calls take a while: about a second each time.
+**The trick:** three loops inside each other visit every block in a box. Lava counts as see-through, so a lava pool shows up even behind a wall of stone; only a single lava block sealed in rock reads `"hidden"`. 100 calls take a while: with 6 TOPS a sweep takes about a second, so `ps` shows Lava as "busy" while it looks. That's fine: busy only turns into "over budget" when a program is busy for 2 seconds straight and can't keep up.
 
 ## Feather: catch a fall (LV2)
 

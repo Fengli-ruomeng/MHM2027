@@ -58,7 +58,7 @@ Bulwark doesn't defend. It decides what happens when things go wrong: after a **
 
 ### Spinner: you can't break the game
 
-Spinner is a loop that never ends, on purpose. Run it and watch `ps`: it says "paused (over budget)". Each tick it may run 20 Lua instructions per TOPS it booked; when it uses them up, it waits for the next tick. An endless loop only slows itself down. Stop it with `stop Spinner`.
+Spinner is a loop that never ends, on purpose. Run it and watch `ps`: it says "over budget". Each tick it may run 20 Lua instructions per TOPS it booked; when it uses them up, it waits for the next tick. An endless loop only slows itself down. Stop it with `stop Spinner`.
 
 ## Where to go from here
 

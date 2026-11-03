@@ -5,22 +5,19 @@ import static org.squiddev.cobalt.ValueFactory.valueOf;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 
 import org.squiddev.cobalt.LuaTable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.clock.WorldClock;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
 
 /**
  * The read-only senses behind world.* and me's item and effect reads. Nothing here changes
@@ -32,12 +29,10 @@ final class Senses {
 
     /**
      * The Overworld clock's total ticks, wherever you are: the Nether and the End have no day of
-     * their own. Empty if the Overworld has no clock, which only a modded world could do.
+     * their own. The same clock Edge's top bar shows.
      */
-    static Optional<Long> clockTicks(ServerPlayer player) {
-        ServerLevel overworld = player.level().getServer().overworld();
-        Optional<Holder<WorldClock>> clock = overworld.dimensionType().defaultClock();
-        return clock.map(each -> overworld.clockManager().getTotalTicks(each));
+    static long clockTicks(ServerPlayer player) {
+        return player.level().getOverworldClockTime();
     }
 
     static int light(ServerPlayer player) {
@@ -46,9 +41,7 @@ final class Senses {
 
     /** Light from torches, lava and other blocks only. */
     static int blockLight(ServerPlayer player) {
-        // Raw brightness is the larger of block light and sky light minus the amount given. Sky
-        // light minus 15 is never above 0, so this leaves the block light.
-        return player.level().getRawBrightness(player.blockPosition(), 15);
+        return player.level().getBrightness(LightLayer.BLOCK, player.blockPosition());
     }
 
     static String biome(ServerPlayer player) {

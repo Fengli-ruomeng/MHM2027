@@ -16,4 +16,11 @@ interface ScriptHost {
      * privilege bypass. -1 for the player's own code, which runs at their gateway level.
      */
     int privilegeLevel();
+
+    /**
+     * Whether calls that change the body are allowed: only in a program whose install check
+     * found them, since that is what sends it to a socket. A call reached under another name
+     * (local m = me) was never seen by that check.
+     */
+    boolean mayChangeBody();
 }

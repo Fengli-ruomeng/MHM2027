@@ -67,7 +67,7 @@ Every call, event and hook your scripts can use, taken from the mod's code.
 | Call | Level | Kernel | Socket | Cooldown | RAM | What it does |
 | --- | --- | --- | --- | --- | --- | --- |
 | `world.time()` | LV0 | yes |  |  | 1 MB | The Overworld's time of day, 0 to 23999 (0 sunrise, 6000 noon, 12000 sunset, 18000 midnight), and whether it's night (13000 to 23000). |
-| `world.day()` | LV0 | yes |  |  | 1 MB | Which day it is: 0 on the world's first day, then 1, 2 and so on. |
+| `world.day()` | LV0 | yes |  |  | 1 MB | Which day it is, counting from 1 like Edge's clock: 1 on the world's first day. |
 | `world.weather()` | LV0 | yes |  |  | 1 MB | The weather where you are: "clear", "rain" or "thunder". Snow counts as rain. |
 | `world.light()` | LV0 |  |  |  | 1 MB | The light at your feet, 0 to 15, and how much of it comes from blocks such as torches. In the Overworld, monsters only spawn where that second number is 0. |
 | `world.biome()` | LV0 |  |  |  | 1 MB | The biome you're in, such as "minecraft:plains". |

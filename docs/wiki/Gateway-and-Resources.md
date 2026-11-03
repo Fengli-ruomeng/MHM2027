@@ -49,7 +49,7 @@ TOPS is computing power. Each program **reserves** the TOPS in its header for as
   - then your kernel's `on_panic` hook decides what starts again.
 - A kernel with `schedule = "priority"` doesn't panic. It crashes your lowest-priority programs until you fit again (see [Kernels and Flaws](Kernels-and-Flaws)).
 
-A program can only run so much code each tick: 20 Lua instructions per tick for each TOPS it reserved. A program that goes over is paused until the next tick, and `ps` shows it as "paused".
+A program can only run so much code each tick: 20 Lua instructions per tick for each TOPS it reserved. A program that goes over is paused until the next tick, and `ps` shows it as "busy". Busy for 2 seconds straight, it shows "over budget": it can't keep up.
 
 ## Buffer
 

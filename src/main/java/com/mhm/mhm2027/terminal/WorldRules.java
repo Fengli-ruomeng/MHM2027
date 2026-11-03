@@ -24,9 +24,9 @@ public final class WorldRules {
         return (int) Math.floorMod(clockTicks, (long) DAY_TICKS);
     }
 
-    /** Which day it is, counting from 0. */
+    /** Which day it is, counting from 1 like Edge's clock and the wired mobs' calendar. */
     public static long day(long clockTicks) {
-        return Math.floorDiv(clockTicks, (long) DAY_TICKS);
+        return Math.floorDiv(clockTicks, (long) DAY_TICKS) + 1;
     }
 
     public static boolean isNight(int timeOfDay) {
