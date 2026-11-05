@@ -20,8 +20,6 @@ Edge draws its own HUD, the **Lens**.
 
 The numbers show for a moment whenever they change. Hold **Left Alt** (change it under Controls) to see everything: level, kernel, Buffer, RAM, TOPS and Heat. Flaws that come and go, such as `thermal`, appear as chips under the bars, and so does a warning when your TOPS run low.
 
-**Bottom left: your sockets.** S1, S2… and O1 are your sockets, with a short name for what sits in each. A lit border means the program is running; an Overload socket fills up with Heat.
-
 **Right side: event cards.** Everything the mod tells you arrives as a card instead of a chat message. The tag says who is talking, such as `10.71.4.200 // ACCESS` or `WATCHER // NOTIFY`, and the colour says how much it matters:
 
 | Colour | Means |

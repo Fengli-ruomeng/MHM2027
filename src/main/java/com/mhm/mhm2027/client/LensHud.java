@@ -11,7 +11,6 @@ import com.mhm.mhm2027.gateway.GatewayTier;
 import com.mhm.mhm2027.gateway.ModAttachments;
 import com.mhm.mhm2027.hud.HudBoot;
 import com.mhm.mhm2027.hud.HudEvent;
-import com.mhm.mhm2027.hud.HudState;
 import com.mhm.mhm2027.terminal.Terminal;
 
 import net.minecraft.client.DeltaTracker;
@@ -47,7 +46,6 @@ public class LensHud implements GuiLayer {
     private static final int MAGENTA = 0xFFFF2E7E;
     private static final int VIOLET = 0xFF8B5CFF;
     private static final int GREY = 0xFF5B6478;
-    private static final int EMPTY = 0xFF2C3550;
     private static final int RAM_PROGRAMS = 0xFFDDE6F5;
     private static final int CHIP_TEXT = 0xFF0B0F17;
 
@@ -60,7 +58,6 @@ public class LensHud implements GuiLayer {
     private static final int DETAILS_WIDTH = 176;
     private static final int CELLS = 10;
     private static final int CELL_WIDTH = 5;
-    private static final int SLOT = 20;
     private static final int CARD_WIDTH = 176;
     private static final long SLIDE_MILLIS = 180;
     private static final long FADE_MILLIS = 400;
@@ -79,7 +76,6 @@ public class LensHud implements GuiLayer {
     private static final float BOOT_LOGO = 0.45f;
     private static final float BOOT_CLEAR = 0.8f;
     private static final float BARS_RETURN = 0.82f;
-    private static final float SLOTS_RETURN = 0.88f;
     private static final float CARDS_RETURN = 0.94f;
     private static final float LOGO_SCALE = 4f;
 
@@ -125,9 +121,6 @@ public class LensHud implements GuiLayer {
         float boot = HudFeed.boot(now);
         if (boot < 0 || boot >= BARS_RETURN) {
             bars(graphics, font, data, height, now, jitter);
-        }
-        if (boot < 0 || boot >= SLOTS_RETURN) {
-            slots(graphics, font, width, height);
         }
         if (boot < 0 || boot >= CARDS_RETURN) {
             TargetCallout.draw(graphics, font, minecraft, width, height, deltaTracker.getGameTimeDeltaPartialTick(true), now);
@@ -284,50 +277,6 @@ public class LensHud implements GuiLayer {
     /** "Baseline", a file name, or a preset's id without its namespace. */
     private static String kernelName(String id) {
         return id.substring(id.lastIndexOf(':') + 1).toUpperCase(Locale.ROOT);
-    }
-
-    // endregion
-
-    // region Socket slots
-
-    private static void slots(GuiGraphicsExtractor graphics, Font font, int width, int height) {
-        List<HudState.Slot> slots = HudFeed.state().slots();
-        if (slots.isEmpty()) {
-            return;
-        }
-        int total = slots.size() * (SLOT + 2) - 2;
-        int x = MARGIN;
-        int y = height - SLOT - 1;
-        // On a narrow screen, sit above the hotbar's row instead of running into it.
-        if (x + total > width / 2 - 91 - MARGIN) {
-            y -= SLOT + 14;
-        }
-        int standard = 0;
-        int overload = 0;
-        for (HudState.Slot slot : slots) {
-            String name = slot.overload() ? "O" + ++overload : "S" + ++standard;
-            int border;
-            int text;
-            if (slot.empty()) {
-                border = EMPTY;
-                text = GREY;
-            } else if (slot.overload()) {
-                border = slot.running() ? ORANGE : 0xFF7A5A2E;
-                text = slot.running() ? TEXT : DIM;
-            } else {
-                border = slot.running() ? CYAN : GREY;
-                text = slot.running() ? TEXT : DIM;
-            }
-            graphics.fill(x, y, x + SLOT, y + SLOT, border);
-            graphics.fill(x + 1, y + 1, x + SLOT - 1, y + SLOT - 1, PANEL);
-            String label = slot.empty() ? name : slot.label();
-            graphics.text(font, label, centered(font, label, x, SLOT), y + 6, text, false);
-            if (slot.fill() > 0) {
-                int fill = (int) Math.round((SLOT - 2) * Math.clamp(slot.fill(), 0f, 1f));
-                graphics.fill(x + 1, y + SLOT - 3, x + 1 + fill, y + SLOT - 1, border);
-            }
-            x += SLOT + 2;
-        }
     }
 
     // endregion

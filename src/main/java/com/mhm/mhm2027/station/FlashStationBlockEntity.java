@@ -31,6 +31,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BaseContainerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -49,6 +50,9 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
     public static final int FIRST_SHARD_SLOT = 1;
     public static final int SIZE = 4;
     public static final int FLASH_TICKS = 200;
+    /** Flashing a plain bow into a Programmable Bow costs this many shards and XP levels. */
+    public static final int BOW_SHARDS = 8;
+    public static final int BOW_XP = 5;
 
     private NonNullList<ItemStack> items = NonNullList.withSize(SIZE, ItemStack.EMPTY);
     private @Nullable UUID flasher;
@@ -81,6 +85,9 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
      * The screen uses it too, with the client's copy of the player's gateway.
      */
     public static @Nullable Component problem(Player player, Container slots) {
+        if (slots.getItem(FIRMWARE_SLOT).is(Items.BOW)) {
+            return bowProblem(player, slots);
+        }
         if (!(slots.getItem(FIRMWARE_SLOT).getItem() instanceof FirmwareItem item)) {
             return Component.translatable("mhm2027.flash.insert");
         }
@@ -96,6 +103,21 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
         }
         if (!player.hasInfiniteMaterials() && player.experienceLevel < firmware.xpLevels()) {
             return Component.translatable("mhm2027.flash.need_levels", firmware.xpLevels(), player.experienceLevel);
+        }
+        return null;
+    }
+
+    /** A bow is flashed through the player's own gateway, so a Null one can't do it. */
+    private static @Nullable Component bowProblem(Player player, Container slots) {
+        if (player.getData(ModAttachments.GATEWAY).tier().isNull()) {
+            return Component.translatable("mhm2027.flash.bow_null");
+        }
+        int shards = shards(slots);
+        if (shards < BOW_SHARDS) {
+            return Component.translatable("mhm2027.flash.need_shards", BOW_SHARDS, shards);
+        }
+        if (!player.hasInfiniteMaterials() && player.experienceLevel < BOW_XP) {
+            return Component.translatable("mhm2027.flash.need_levels", BOW_XP, player.experienceLevel);
         }
         return null;
     }
@@ -186,6 +208,21 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
 
     private void complete(ServerPlayer player, Terminal terminal) {
         Component problem = problem(player, this);
+        if (problem == null && items.get(FIRMWARE_SLOT).is(Items.BOW)) {
+            // Enchantments, damage and a custom name carry over to the new bow.
+            items.set(FIRMWARE_SLOT, items.get(FIRMWARE_SLOT).transmuteCopy(ModItems.PROGRAMMABLE_BOW.get()));
+            takeShards(BOW_SHARDS);
+            if (!player.hasInfiniteMaterials()) {
+                player.giveExperienceLevels(-BOW_XP);
+            }
+            terminal.endFlash(player);
+            flasher = null;
+            progress = 0;
+            setChanged();
+            Hud.event(player, HudEvent.Kind.INFO, "FLASH // BOW", Component.translatable("mhm2027.flash.bow_done"), Component.empty(), FLASH_KEY, 0);
+            playSound(SoundEvents.BEACON_ACTIVATE);
+            return;
+        }
         if (problem != null || !(items.get(FIRMWARE_SLOT).getItem() instanceof FirmwareItem item)) {
             terminal.endFlash(player);
             reset(player, "items");
@@ -252,6 +289,9 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
 
     /** "FLASH // LV5" for the firmware in the slot. */
     private String flashTag() {
+        if (items.get(FIRMWARE_SLOT).is(Items.BOW)) {
+            return "FLASH // BOW";
+        }
         return items.get(FIRMWARE_SLOT).getItem() instanceof FirmwareItem item ? flashTag(item.firmware()) : "FLASH";
     }
 
@@ -294,9 +334,9 @@ public class FlashStationBlockEntity extends BaseContainerBlockEntity {
         return accepts(slot, stack);
     }
 
-    /** Firmware in the first slot, Data Shards in the rest. The client's menu checks this too. */
+    /** Firmware or a plain bow in the first slot, Data Shards in the rest. The client's menu checks this too. */
     static boolean accepts(int slot, ItemStack stack) {
-        return slot == FIRMWARE_SLOT ? stack.getItem() instanceof FirmwareItem : stack.is(ModItems.DATA_SHARD.get());
+        return slot == FIRMWARE_SLOT ? stack.getItem() instanceof FirmwareItem || stack.is(Items.BOW) : stack.is(ModItems.DATA_SHARD.get());
     }
 
     @Override

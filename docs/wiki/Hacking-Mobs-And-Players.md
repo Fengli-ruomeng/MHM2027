@@ -147,6 +147,10 @@ wheel set 3 run Meltdown
 
 Now hold **V**, look at a skeleton, press **2**, and watch it drop its bow.
 
+## With a Programmable Bow
+
+A session doesn't only let you act on a target: while it's open, arrows from a [Programmable Bow](Items#programmable-bow) chase it. Hack a skeleton with Freeze, then shoot: every arrow you fire in the next 6 seconds homes in on it and follows it as it runs. If it ducks behind a wall for more than half a second, the arrow gives up. With sessions on several mobs, each arrow goes for the nearest. Without any session, the bow's arrows fly wild, so it's only as good as your hacking.
+
 ## Against players
 
 Players fight back: their firewall may deny you (costing them Buffer), resist with TOPS, or reboot you out. Use the target's flaws, bring more TOPS, and hit them when they're busy, such as when they're running hot.

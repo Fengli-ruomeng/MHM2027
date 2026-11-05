@@ -1,0 +1,6 @@
+{
+  "parent": "mhm2027:item/programmable_bow",
+  "textures": {
+    "layer0": "mhm2027:item/programmable_bow_pulling_2"
+  }
+}

@@ -41,6 +41,9 @@ public final class ModItems {
     public static final DeferredItem<ScannerItem> SCANNER = ITEMS.registerItem("scanner", ScannerItem::new, properties -> properties.stacksTo(1));
     public static final DeferredItem<EmpActivatorItem> EMP_ACTIVATOR = ITEMS.registerItem("emp_activator", EmpActivatorItem::new,
             properties -> properties.stacksTo(16));
+    /** Alontesi Tech: flashed from a plain bow at a Flash Station. Same durability and enchanting as a bow. */
+    public static final DeferredItem<ProgrammableBowItem> PROGRAMMABLE_BOW = ITEMS.registerItem("programmable_bow", ProgrammableBowItem::new,
+            properties -> properties.durability(384).enchantable(1));
 
     /** The presets this mod ships, for the creative tab. Loot tables and other datapacks can add more. */
     private static final List<Identifier> BUILTIN_PROGRAM_PRESETS = List.of(
@@ -57,6 +60,7 @@ public final class ModItems {
                 output.accept(FLASH_STATION.get());
                 output.accept(SCANNER.get());
                 output.accept(EMP_ACTIVATOR.get());
+                output.accept(PROGRAMMABLE_BOW.get());
                 ModPotions.CYBER.forEach(potion -> output.accept(PotionContents.createItemStack(Items.POTION, potion)));
                 FIRMWARE.values().forEach(item -> output.accept(item.get()));
                 BUILTIN_PROGRAM_PRESETS.forEach(preset -> output.accept(ChipActions.presetChip(preset, false)));

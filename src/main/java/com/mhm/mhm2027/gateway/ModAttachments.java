@@ -3,6 +3,7 @@ package com.mhm.mhm2027.gateway;
 import java.util.function.Supplier;
 
 import com.mhm.mhm2027.Mhm2027;
+import com.mhm.mhm2027.item.LinkedShot;
 import com.mhm.mhm2027.terminal.KernelSettings;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -52,6 +53,15 @@ public class ModAttachments {
             .builder(() -> Sockets.EMPTY)
             .serialize(Sockets.CODEC.fieldOf("sockets"))
             .copyOnDeath()
+            .build());
+
+    /**
+     * A Programmable Bow's arrow: tracking, wild or done. Synced to everyone who sees the arrow,
+     * so their clients steer it too. Not saved: a reloaded arrow is just an arrow.
+     */
+    public static final Supplier<AttachmentType<LinkedShot>> LINKED_SHOT = ATTACHMENT_TYPES.register("linked_shot", () -> AttachmentType
+            .builder(() -> LinkedShot.NONE)
+            .sync((holder, to) -> true, LinkedShot.STREAM_CODEC)
             .build());
 
     /** The quick wheel's shortcuts. The owner's client draws the wheel from them. */

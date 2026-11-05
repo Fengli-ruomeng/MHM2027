@@ -12,6 +12,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
@@ -100,8 +101,10 @@ public class FlashStationScreen extends AbstractContainerScreen<FlashStationMenu
                 status = problem;
                 color = TEXT_PROBLEM;
             } else {
-                FirmwareItem item = (FirmwareItem) menu.stationSlots().getItem(FlashStationBlockEntity.FIRMWARE_SLOT).getItem();
-                status = Component.translatable("mhm2027.flash.ready", FirmwareItem.levelName(item.firmware().target()));
+                ItemStack flashing = menu.stationSlots().getItem(FlashStationBlockEntity.FIRMWARE_SLOT);
+                status = flashing.getItem() instanceof FirmwareItem item
+                        ? Component.translatable("mhm2027.flash.ready", FirmwareItem.levelName(item.firmware().target()))
+                        : Component.translatable("mhm2027.flash.ready_bow");
                 color = TEXT_READY;
             }
         }

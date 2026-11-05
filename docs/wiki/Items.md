@@ -40,6 +40,24 @@ The only way to refill **Buffer**. A Cyber Potion restores a share of your **max
 
 Splash and lingering versions brew the usual way (gunpowder, dragon's breath), so you can refill your teammates, or a gateway mob you'd rather keep around. A potion drunk mid-flash isn't wasted: it adds to the Buffer you get back.
 
+## Alontesi Tech
+
+Experimental weapons that run on your gateway.
+
+### Programmable Bow
+
+> *Every arrow already knows where it's going.*
+
+A bow with blue plating at the grip. It draws, fires and enchants like a bow, and takes any arrow. What's different is where the arrow goes:
+
+- **While you hold a session on a gateway** (you've hacked it: see [Cyber Combat](Cyber-Combat)), every arrow plots a course for it and **follows it as it moves**. With sessions on several, it goes for the nearest. You'll see a cyan trail, sparks, and a flickering line of light from the arrow to its target.
+- It gives up and drops like an ordinary arrow when no linked gateway is within **50 blocks** of it (the session ended, or they're too far), when they've been out of sight behind blocks for half a second, or after 10 seconds.
+- **With no session open, there's nothing to aim for.** The arrow flies wild: a magenta trail, swerving at random for two seconds, then it falls. It's no use like that.
+
+So hack first, shoot second. A session lasts 6 seconds: open one with `remote.access` and every arrow you loose in that time goes where it should.
+
+**How to get one:** flash a plain bow at a [Flash Station](Progression#the-flash-station). Put the bow in the firmware slot and **8 Data Shards** in the shard slots, and press Flash; it costs **5 XP levels**. Like any flash it goes through your gateway, which is down for the 10 seconds. Enchantments, damage and a custom name carry over. A Null gateway can't do it.
+
 ## KuyoZ Mech
 
 General-purpose cyber tools in white casings. None of them work on a Null gateway.

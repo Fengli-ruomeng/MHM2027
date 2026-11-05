@@ -122,6 +122,20 @@ public final class Sessions {
         return session;
     }
 
+    /** The gateways an attacker holds a session on, still alive. A Programmable Bow's arrows chase these. */
+    public static List<LivingEntity> linkedTargets(UUID attacker) {
+        List<LivingEntity> targets = new ArrayList<>();
+        for (Session session : OPEN) {
+            if (session.open && session.attacker.equals(attacker)) {
+                LivingEntity target = session.target();
+                if (target != null) {
+                    targets.add(target);
+                }
+            }
+        }
+        return targets;
+    }
+
     /** The open sessions an attacker holds. */
     static List<Session> heldBy(UUID attacker) {
         return OPEN.stream().filter(session -> session.open && session.attacker.equals(attacker)).toList();

@@ -14,7 +14,7 @@ S S S      B = Blank Data Chip, S = smooth stone
 
 Mine it with a pickaxe. It has a firmware slot, three Data Shard slots (enough for LV10's 128 shards), a **Flash** button, and a status line that tells you what's missing.
 
-The station is also where you **change sockets** and **install kernels**, within 6 blocks.
+The station is also where you **change sockets** and **install kernels**, within 6 blocks, and where a plain bow is flashed into a [Programmable Bow](Items#programmable-bow) (8 Data Shards and 5 XP levels).
 
 ## Firmware
 

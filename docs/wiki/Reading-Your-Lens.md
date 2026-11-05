@@ -50,11 +50,12 @@ Heat climbs when your firewall **resists** an attack, and when you run **Overloa
 | Where | What | Why you care |
 | --- | --- | --- |
 | Under the bars | **Flaw chips**, such as `thermal major` | A flaw is a weak spot. Attackers who know it get in faster |
-| Bottom left | **Sockets**: S1, S2, O1... | Programs that change your body (speed, healing...) only run from a socket |
 | Top right | **Event cards** | Everything Edge tells you. **Magenta means someone is acting against you** |
 | Middle, in big letters | **Banners**: SYSTEM BREACH, KERNEL PANIC... | The moments that matter most |
 | Around a mob you look at | **Brackets and a label** | Its name, level and distance; after you inspect it, its flaws |
 | Bottom right | **Tasks** | Anything that takes time: attacks on you (blinking), your programs at work, cooldowns |
+
+Your **sockets** (programs that change your body only run from one) aren't on the Lens: Edge's taskbar shows them, and `socket ls` lists them.
 
 ## What to do when...
 
